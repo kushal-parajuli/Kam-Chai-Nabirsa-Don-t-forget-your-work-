@@ -71,7 +71,7 @@
   --kcn-badge-text: #FFFFFF;
 }
 
-/* Hidden during fullscreen */
+/* Hidden during fullscreen or when disabled */
 .kcn-hidden {
   display: none !important;
 }
@@ -88,7 +88,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: grab;
+  cursor: pointer;
   user-select: none;
   touch-action: none;
   pointer-events: auto;
@@ -97,12 +97,12 @@
   z-index: 2147483647;
 }
 
+/* Hover highlights button only (does not open panel) */
 .kcn-pill:hover,
-.kcn-pill:focus-visible,
-.kcn-pill.kcn-active,
-.kcn-pill.kcn-dragging {
+.kcn-pill:focus-visible {
   opacity: 1 !important;
-  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.35);
+  transform: scale(1.08);
+  box-shadow: 0 0 14px rgba(79, 70, 229, 0.45);
 }
 
 .kcn-pill:focus-visible {
@@ -110,8 +110,16 @@
   outline-offset: 2px;
 }
 
+.kcn-pill.kcn-active {
+  opacity: 1 !important;
+  transform: scale(1.05);
+  box-shadow: 0 0 14px rgba(79, 70, 229, 0.45);
+}
+
 .kcn-pill.kcn-dragging {
   cursor: grabbing !important;
+  opacity: 1 !important;
+  transform: scale(1.05);
   transition: none !important;
 }
 

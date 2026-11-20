@@ -90,12 +90,12 @@ Critical design rules
 Manifest requirements
 • manifest_version: 3, with name Kam Chai Nabirsa, a clear description, and version 0.1.0.
 • background.service_worker: background/service-worker.js with type: module.
-• permissions: storage, alarms, notifications, offscreen, unlimitedStorage.
-• host_permissions: http://127.0.0.1:8765/* (helper only).
-• content_scripts: one entry matching <all_urls>, run_at: document_idle, all_frames: false, loading the widget script and CSS.
-• action: toolbar icon with a popup that tells the user the widget is on the page and offers a button to open the full panel (needed on pages where content scripts cannot run).
-• icons: 16, 32, 48, 128 px (generate simple placeholder PNGs from an SVG; the owner can replace them later).
-• web_accessible_resources: only what the widget needs (icon images, fonts), nothing broader.
+• permissions: storage, alarms, notifications, offscreen, unlimitedStorage, scripting.
+• host_permissions: http://127.0.0.1:8765/* (helper), <all_urls> (for programmatic script injection into existing tabs on install/startup).
+• content_scripts: one entry matching <all_urls>, run_at: document_idle, all_frames: false, match_about_blank: true, loading the widget script.
+• action: toolbar icon with a popup that provides a "Show floating widget" toggle, status details, and a button to reset widget position.
+• icons: 16, 32, 48, 128 px (placeholder PNGs generated from an SVG; customizable).
+• web_accessible_resources: only what the widget needs (icons, CSS, shared modules).
 • Do not request tabs, history, clipboardRead, downloads or broad permissions unless a phase genuinely needs them. Ask first.
 Known platform limits (explain to the owner, show friendly UI)
 • Content scripts do not run on chrome:// pages, the Chrome Web Store, or the built-in new tab page. The widget will not appear there. The toolbar popup remains the fallback.
@@ -227,9 +227,11 @@ chrome.storage.local (settings only)
 widgetPosition (edge and vertical offset), widgetOpacity (0.2 to 1, default 0.35), theme (light, dark, auto), helperToken, helperPort (default 8765), soundEnabled (default true), lastActiveTab.
 8. Feature specification
 8.1 Floating widget
-• Small round icon (about 40 px) on the right edge of the screen, vertically draggable, snapping to the left or right edge. Position persists.
-• Default opacity 0.35. Becomes fully opaque on hover or focus. Optional setting to adjust opacity.
-• Hover or click expands a panel (about 340 x 460 px) with a tab bar: Todo | Notes | Downloader. Click outside or press Esc to collapse. A small pin button keeps it open.
+• Small round icon (about 40 px) on the edge of the screen, vertically draggable, snapping to the left or right edge. Position persists.
+• Default opacity 0.35. Hover only highlights the button (full opacity, subtle scale, and glow with pointer cursor); hover does NOT open the panel.
+• Click to open: the panel (about 340 x 460 px) opens ONLY on click (toggles open/closed on click; Enter and Space also toggle when focused). Pointer movement > 5px is treated strictly as a drag and does not toggle the panel. Click outside or press Esc to collapse. A pin button keeps it open.
+• Always-on injection: on install and browser startup, the service worker automatically injects the content script into all open tabs (http, https, file schemes) without requiring page reloads. A toolbar popup toggle allows enabling/disabling the floating widget globally.
+• Guarded against duplicate injections via window.__kcnWidgetLoaded and resistant to single-page applications (SPAs) rewriting document.body.
 • A badge on the icon shows the number of due or overdue unticked todos.
 • Keyboard accessible (focusable, aria-labels, visible focus ring, logical tab order).
 • Must not shift page layout, steal focus on load, or block clicks on the page except on its own area. Use a very high but sane z-index and all: initial resets inside the Shadow DOM.

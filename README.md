@@ -63,7 +63,9 @@ This tool is designed strictly for local personal use and educational practice. 
 
 ## Known Limitations
 
-- Content scripts cannot run on internal browser pages (e.g. `chrome://` URLs, Chrome Web Store). Use the toolbar popup fallback on these pages.
+- Content scripts cannot run on internal browser pages (e.g. `chrome://` URLs, Chrome Web Store, and the built-in New Tab page). Use the toolbar popup fallback on these pages.
+- To display the widget on local HTML files (`file:///...`), enable **"Allow access to file URLs"** in Chrome's extension details page (`chrome://extensions` > Details for Kam Chai Nabirsa).
+- Chrome may show a standard "Disable developer mode extensions" prompt or warning upon browser startup when running unpacked extensions.
 - Alarms require the Chrome browser process to be active.
 
 ## License

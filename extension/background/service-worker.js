@@ -4,6 +4,7 @@ import { MESSAGES, createResponse } from '../shared/messages.js';
  * Default user settings.
  */
 const DEFAULT_SETTINGS = {
+  widgetEnabled: true,
   widgetPosition: { edge: 'right', top: 120 },
   widgetOpacity: 0.35,
   theme: 'auto',
@@ -13,6 +14,36 @@ const DEFAULT_SETTINGS = {
   lastActiveTab: 'todo',
   notesAutoDeleteDays: 0
 };
+
+/**
+ * Injects the content script into all open tabs matching http, https, or file schemes.
+ * Ensures the widget is immediately active even on tabs opened prior to extension install/reload.
+ */
+async function injectWidgetIntoAllTabs() {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (!tab.id || !tab.url) continue;
+
+      const isInjectable = tab.url.startsWith('http://') || 
+                           tab.url.startsWith('https://') || 
+                           tab.url.startsWith('file:///');
+
+      if (!isInjectable) continue;
+
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content/widget.js']
+        });
+      } catch (tabErr) {
+        // Silently skip tabs where script execution is restricted (e.g. chrome://, Web Store)
+      }
+    }
+  } catch (err) {
+    console.error('[KCN Service Worker] Error querying tabs for injection:', err);
+  }
+}
 
 /**
  * On installed lifecycle event.
@@ -35,13 +66,18 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   } catch (err) {
     console.error('[KCN Service Worker] Failed to initialize default settings:', err);
   }
+
+  // Inject into all already-open tabs
+  await injectWidgetIntoAllTabs();
 });
 
 /**
- * On startup lifecycle event.
+ * On startup lifecycle event (browser launched).
  */
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
   console.log('[KCN Service Worker] Browser startup event received.');
+  // Ensure restored or active tabs receive injection
+  await injectWidgetIntoAllTabs();
 });
 
 /**
@@ -70,7 +106,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return false;
 
     default:
-      // Stub acknowledgment for unhandled messages
       sendResponse(createResponse(true, { acknowledged: true, type }));
       return false;
   }
