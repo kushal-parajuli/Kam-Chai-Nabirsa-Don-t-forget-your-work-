@@ -1,0 +1,11 @@
+﻿node_modules/
+__pycache__/
+.venv/
+venv/
+helper/token.txt
+helper/config.json
+*.log
+.env
+downloads/
+.DS_Store
+Thumbs.db
