@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#4338CA"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  
+  <!-- Outer Rounded Square / Circle Badge -->
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#grad)" filter="url(#shadow)"/>
+  
+  <!-- Stylized Bell / Check Mark Symbol -->
+  <!-- Checkmark -->
+  <path d="M38 66 L54 82 L90 46" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Active Task / Reminder Dot in Upper Right -->
+  <circle cx="94" cy="34" r="7" fill="#F43F5E"/>
+</svg>

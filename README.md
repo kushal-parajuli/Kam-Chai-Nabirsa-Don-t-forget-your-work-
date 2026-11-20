@@ -1,4 +1,4 @@
-﻿# Kam Chai Nabirsa (Don't Forget Your Work)
+# Kam Chai Nabirsa (Don't Forget Your Work)
 
 A personal Chrome extension (Manifest V3) providing an unobtrusive floating productivity companion directly on web pages. Features a to-do list with alarm-style notifications, a scratchpad for text and image pastes, and a local video/audio downloader powered by an optional Python helper.
 
