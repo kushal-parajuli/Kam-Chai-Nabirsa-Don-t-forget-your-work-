@@ -1,4 +1,5 @@
 import { MESSAGES, createResponse } from '../shared/messages.js';
+import * as db from './db.js';
 
 /**
  * Default user settings.
@@ -46,6 +47,25 @@ async function injectWidgetIntoAllTabs() {
 }
 
 /**
+ * Broadcasts a message to all active tabs.
+ * Used to keep widgets synchronized when data changes in another tab.
+ * @param {object} message 
+ */
+async function broadcastToAllTabs(message) {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      chrome.tabs.sendMessage(tab.id, message).catch(() => {
+        // Tab may not have content script mounted; ignore silently
+      });
+    }
+  } catch (err) {
+    console.error('[KCN Service Worker] Error broadcasting message:', err);
+  }
+}
+
+/**
  * On installed lifecycle event.
  */
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -67,6 +87,13 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     console.error('[KCN Service Worker] Failed to initialize default settings:', err);
   }
 
+  // Pre-open DB so object stores are ready
+  try {
+    await db.openDB();
+  } catch (dbErr) {
+    console.error('[KCN Service Worker] Failed to open IndexedDB on install:', dbErr);
+  }
+
   // Inject into all already-open tabs
   await injectWidgetIntoAllTabs();
 });
@@ -76,7 +103,11 @@ chrome.runtime.onInstalled.addListener(async (details) => {
  */
 chrome.runtime.onStartup.addListener(async () => {
   console.log('[KCN Service Worker] Browser startup event received.');
-  // Ensure restored or active tabs receive injection
+  try {
+    await db.openDB();
+  } catch (dbErr) {
+    console.error('[KCN Service Worker] Failed to open IndexedDB on startup:', dbErr);
+  }
   await injectWidgetIntoAllTabs();
 });
 
@@ -84,11 +115,62 @@ chrome.runtime.onStartup.addListener(async () => {
  * Central message router.
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('[KCN Service Worker] Message received:', request?.type, 'from:', sender?.tab ? `tab:${sender.tab.id}` : 'popup');
-
   const { type, payload } = request || {};
 
   switch (type) {
+    // Todo CRUD operations
+    case MESSAGES.TODO_LIST:
+      db.getTodos()
+        .then((todos) => sendResponse(createResponse(true, todos)))
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true; // asynchronous response
+
+    case MESSAGES.TODO_ADD:
+      db.addTodo(payload || {})
+        .then((newTodo) => {
+          sendResponse(createResponse(true, newTodo));
+          broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
+        })
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true;
+
+    case MESSAGES.TODO_UPDATE:
+      db.updateTodo(payload?.id, payload?.updates || {})
+        .then((updatedTodo) => {
+          sendResponse(createResponse(true, updatedTodo));
+          broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
+        })
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true;
+
+    case MESSAGES.TODO_TOGGLE:
+      db.toggleTodo(payload?.id)
+        .then((toggledTodo) => {
+          sendResponse(createResponse(true, toggledTodo));
+          broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
+        })
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true;
+
+    case MESSAGES.TODO_DELETE:
+      db.deleteTodo(payload?.id)
+        .then((deletedTodo) => {
+          sendResponse(createResponse(true, deletedTodo));
+          broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
+        })
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true;
+
+    case MESSAGES.TODO_CLEAR_DONE:
+      db.clearCompletedTodos()
+        .then((deletedCount) => {
+          sendResponse(createResponse(true, { count: deletedCount }));
+          broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
+        })
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true;
+
+    // Settings
     case MESSAGES.SETTINGS_GET:
       chrome.storage.local.get(null)
         .then((settings) => sendResponse(createResponse(true, settings)))
@@ -102,8 +184,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
 
     case MESSAGES.BADGE_REFRESH:
-      sendResponse(createResponse(true, { count: 0 }));
-      return false;
+      db.getTodos()
+        .then((todos) => {
+          const openCount = todos.filter((t) => !t.done).length;
+          sendResponse(createResponse(true, { count: openCount }));
+        })
+        .catch(() => sendResponse(createResponse(true, { count: 0 })));
+      return true;
 
     default:
       sendResponse(createResponse(true, { acknowledged: true, type }));

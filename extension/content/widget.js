@@ -97,19 +97,8 @@
 
         <!-- Tab Content Area -->
         <div class="kcn-content">
-          <!-- Todo Pane -->
-          <div class="kcn-tab-pane kcn-pane-active" data-pane="todo" role="tabpanel">
-            <div class="kcn-placeholder-card">
-              <div class="kcn-placeholder-icon">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M9 11l3 3L22 4"/>
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-                </svg>
-              </div>
-              <div class="kcn-placeholder-title">Todo & Reminders</div>
-              <div class="kcn-placeholder-desc">Tasks, due dates, and alarm notifications will be active here in Phase 2 & 3.</div>
-            </div>
-          </div>
+          <!-- Todo Pane (populated by content/tabs/todo.js) -->
+          <div class="kcn-tab-pane kcn-pane-active" data-pane="todo" role="tabpanel"></div>
 
           <!-- Notes Pane -->
           <div class="kcn-tab-pane" data-pane="notes" role="tabpanel">
@@ -160,11 +149,46 @@
 
     // Element References
     const pill = shadowRoot.getElementById('kcn-pill');
+    const pillBadge = shadowRoot.getElementById('kcn-badge');
     const panel = shadowRoot.getElementById('kcn-panel');
     const pinBtn = shadowRoot.getElementById('kcn-pin-btn');
     const closeBtn = shadowRoot.getElementById('kcn-close-btn');
     const tabBtns = shadowRoot.querySelectorAll('.kcn-tab-btn');
     const tabPanes = shadowRoot.querySelectorAll('.kcn-tab-pane');
+    const todoPane = shadowRoot.querySelector('[data-pane="todo"]');
+
+    // Badge Handler
+    function updateBadge(count) {
+      if (!pillBadge) return;
+      if (typeof count === 'number' && count > 0) {
+        pillBadge.textContent = count > 99 ? '99+' : String(count);
+        pillBadge.classList.remove('kcn-badge-empty');
+      } else {
+        pillBadge.textContent = '0';
+        pillBadge.classList.add('kcn-badge-empty');
+      }
+    }
+
+    // Initialize Todo Tab Component
+    (async () => {
+      try {
+        const todoModule = await import(chrome.runtime.getURL('content/tabs/todo.js'));
+        if (todoModule && typeof todoModule.initTodoTab === 'function') {
+          todoModule.initTodoTab({
+            paneElement: todoPane,
+            onBadgeUpdate: updateBadge
+          });
+        }
+      } catch (err) {
+        console.error('[KCN] Failed to dynamically load todo module:', err);
+        if (typeof window.__kcnInitTodoTab === 'function') {
+          window.__kcnInitTodoTab({
+            paneElement: todoPane,
+            onBadgeUpdate: updateBadge
+          });
+        }
+      }
+    })();
 
     // Load Saved Preferences
     chrome.storage.local.get(['widgetEnabled', 'widgetPosition', 'widgetOpacity', 'theme', 'lastActiveTab'], (items) => {

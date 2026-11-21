@@ -37,6 +37,8 @@
   --kcn-tab-active-bg: #FFFFFF;
   --kcn-badge-bg: #EF4444;
   --kcn-badge-text: #FFFFFF;
+  --kcn-toast-bg: #1E293B;
+  --kcn-toast-text: #FFFFFF;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -53,6 +55,8 @@
     --kcn-tab-active-bg: #1E293B;
     --kcn-badge-bg: #EF4444;
     --kcn-badge-text: #FFFFFF;
+    --kcn-toast-bg: #020617;
+    --kcn-toast-text: #F8FAFC;
   }
 }
 
@@ -69,9 +73,11 @@
   --kcn-tab-active-bg: #1E293B;
   --kcn-badge-bg: #EF4444;
   --kcn-badge-text: #FFFFFF;
+  --kcn-toast-bg: #020617;
+  --kcn-toast-text: #F8FAFC;
 }
 
-/* Hidden during fullscreen or when disabled */
+/* Hidden elements */
 .kcn-hidden {
   display: none !important;
 }
@@ -248,6 +254,11 @@
   color: var(--kcn-text);
 }
 
+.kcn-icon-btn:focus-visible {
+  outline: 2px solid var(--kcn-primary);
+  outline-offset: 1px;
+}
+
 .kcn-icon-btn.kcn-pinned {
   color: var(--kcn-primary);
   background-color: var(--kcn-primary-light);
@@ -281,6 +292,11 @@
   background-color: rgba(0, 0, 0, 0.04);
 }
 
+.kcn-tab-btn:focus-visible {
+  outline: 2px solid var(--kcn-primary);
+  outline-offset: 1px;
+}
+
 .kcn-tab-btn.kcn-tab-active {
   background-color: var(--kcn-tab-active-bg);
   color: var(--kcn-primary);
@@ -291,23 +307,386 @@
 /* Tab Content Container */
 .kcn-content {
   flex: 1;
-  overflow-y: auto;
-  padding: 14px;
+  overflow: hidden;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .kcn-tab-pane {
   display: none;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
 }
 
 .kcn-tab-pane.kcn-pane-active {
   display: flex;
 }
 
-/* Placeholder card inside tab panes */
+/* =========================================
+   TODO TAB STYLING
+   ========================================= */
+
+.kcn-todo-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Add Todo Form */
+.kcn-todo-form {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.kcn-todo-input {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid var(--kcn-border);
+  border-radius: 6px;
+  background-color: var(--kcn-bg-secondary);
+  color: var(--kcn-text);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.kcn-todo-input:focus {
+  border-color: var(--kcn-primary);
+  box-shadow: 0 0 0 2px var(--kcn-primary-light);
+}
+
+.kcn-todo-add-btn {
+  background-color: var(--kcn-primary);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 6px;
+  padding: 0 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+}
+
+.kcn-todo-add-btn:hover {
+  background-color: var(--kcn-primary-hover);
+}
+
+.kcn-todo-add-btn:focus-visible {
+  outline: 2px solid var(--kcn-primary);
+  outline-offset: 2px;
+}
+
+/* Error Banner */
+.kcn-todo-error {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  background-color: #FEE2E2;
+  color: #991B1B;
+  border: 1px solid #FCA5A5;
+}
+
+.kcn-theme-dark .kcn-todo-error,
+:host(:not(.kcn-theme-light)) .kcn-todo-error {
+  background-color: #450A0A;
+  color: #FCA5A5;
+  border-color: #7F1D1D;
+}
+
+/* Scrollable Task Area */
+.kcn-todo-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+/* Todo Lists */
+.kcn-todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kcn-todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background-color: var(--kcn-bg);
+  border: 1px solid var(--kcn-border);
+  border-radius: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.kcn-todo-item:hover {
+  border-color: rgba(79, 70, 229, 0.4);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.kcn-item-done {
+  background-color: var(--kcn-bg-secondary);
+  opacity: 0.75;
+}
+
+/* Checkbox */
+.kcn-todo-check-wrap {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+}
+
+.kcn-todo-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--kcn-primary);
+  margin: 0;
+}
+
+.kcn-todo-checkbox:focus-visible {
+  outline: 2px solid var(--kcn-primary);
+  outline-offset: 1px;
+}
+
+/* Title */
+.kcn-todo-title {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--kcn-text);
+  word-break: break-word;
+  user-select: text;
+  cursor: default;
+}
+
+.kcn-item-done .kcn-todo-title {
+  text-decoration: line-through;
+  color: var(--kcn-text-muted);
+}
+
+/* Inline Edit Input */
+.kcn-todo-edit-input {
+  flex: 1;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 4px 6px;
+  border: 1.5px solid var(--kcn-primary);
+  border-radius: 4px;
+  background-color: var(--kcn-bg);
+  color: var(--kcn-text);
+  outline: none;
+}
+
+/* Actions */
+.kcn-todo-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.kcn-todo-item:hover .kcn-todo-actions,
+.kcn-todo-item:focus-within .kcn-todo-actions {
+  opacity: 1;
+}
+
+.kcn-todo-action-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--kcn-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.kcn-todo-action-btn:hover {
+  background-color: var(--kcn-border);
+  color: var(--kcn-text);
+}
+
+.kcn-del-btn:hover {
+  color: #EF4444;
+  background-color: rgba(239, 68, 68, 0.12);
+}
+
+.kcn-todo-action-btn:focus-visible {
+  outline: 2px solid var(--kcn-primary);
+  outline-offset: 1px;
+}
+
+/* Collapsible Completed Section */
+.kcn-completed-section {
+  margin-top: 12px;
+  border-top: 1px dashed var(--kcn-border);
+  padding-top: 10px;
+}
+
+.kcn-completed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.kcn-completed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--kcn-text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+
+.kcn-completed-toggle:hover {
+  color: var(--kcn-text);
+}
+
+.kcn-completed-toggle:focus-visible {
+  outline: 2px solid var(--kcn-primary);
+  outline-offset: 1px;
+}
+
+.kcn-completed-chevron {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kcn-completed-toggle.kcn-expanded .kcn-completed-chevron {
+  transform: rotate(90deg);
+}
+
+.kcn-clear-completed-btn {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  color: var(--kcn-text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+
+.kcn-clear-completed-btn:hover {
+  color: #EF4444;
+}
+
+.kcn-clear-completed-btn:focus-visible {
+  outline: 2px solid #EF4444;
+  outline-offset: 1px;
+}
+
+/* Empty State */
+.kcn-todo-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 34px 16px;
+  text-align: center;
+  color: var(--kcn-text-muted);
+}
+
+.kcn-todo-empty-icon {
+  color: var(--kcn-primary);
+  opacity: 0.8;
+  margin-bottom: 10px;
+}
+
+.kcn-todo-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--kcn-text);
+  margin-bottom: 4px;
+}
+
+.kcn-todo-empty-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 220px;
+}
+
+/* 5-Second Undo Toast */
+.kcn-toast {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  right: 6px;
+  background-color: var(--kcn-toast-bg);
+  color: var(--kcn-toast-text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  z-index: 20;
+  font-size: 12px;
+  animation: kcn-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes kcn-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.kcn-toast-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+  font-weight: 500;
+}
+
+.kcn-toast-undo-btn {
+  background: transparent;
+  border: none;
+  color: #818CF8;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+
+.kcn-toast-undo-btn:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.kcn-toast-undo-btn:focus-visible {
+  outline: 2px solid #818CF8;
+  outline-offset: 1px;
+}
+
+/* Placeholder card inside other tab panes */
 .kcn-placeholder-card {
   display: flex;
   flex-direction: column;
@@ -342,7 +721,10 @@
   .kcn-pill,
   .kcn-panel,
   .kcn-tab-btn,
-  .kcn-icon-btn {
+  .kcn-icon-btn,
+  .kcn-toast,
+  .kcn-completed-chevron {
     transition: none !important;
+    animation: none !important;
   }
 }

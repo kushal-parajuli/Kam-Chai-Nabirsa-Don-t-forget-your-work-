@@ -10,6 +10,9 @@ export const MESSAGES = {
   TODO_TOGGLE: 'TODO_TOGGLE',
   TODO_CLEAR_DONE: 'TODO_CLEAR_DONE',
 
+  // Broadcast events
+  TODOS_CHANGED: 'TODOS_CHANGED',
+
   // Notes operations
   NOTE_LIST: 'NOTE_LIST',
   NOTE_ADD: 'NOTE_ADD',
