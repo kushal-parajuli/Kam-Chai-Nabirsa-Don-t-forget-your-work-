@@ -88,6 +88,28 @@
           </div>
         </div>
 
+        <!-- Alarm Ringing Banner (Active during reminder alarm) -->
+        <div class="kcn-alarm-banner kcn-hidden" id="kcn-alarm-banner" role="alert" aria-live="assertive">
+          <div class="kcn-alarm-banner-top">
+            <span class="kcn-alarm-banner-badge" id="kcn-alarm-banner-badge">REMINDER</span>
+            <span class="kcn-alarm-banner-title" id="kcn-alarm-banner-title"></span>
+          </div>
+          <div class="kcn-alarm-banner-actions">
+            <button type="button" class="kcn-alarm-action-btn kcn-alarm-stop" id="kcn-alarm-stop-btn">Stop</button>
+            <button type="button" class="kcn-alarm-action-btn kcn-alarm-snooze" id="kcn-alarm-snooze-btn">Snooze 5 min</button>
+            <button type="button" class="kcn-alarm-action-btn kcn-alarm-done" id="kcn-alarm-done-btn">Mark done</button>
+          </div>
+        </div>
+
+        <!-- Pre-alert heads up toast -->
+        <div class="kcn-pre-toast kcn-hidden" id="kcn-pre-toast" role="status" aria-live="polite">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+          <span id="kcn-pre-toast-text"></span>
+        </div>
+
         <!-- Tab Navigation -->
         <div class="kcn-tabs" role="tablist">
           <button class="kcn-tab-btn kcn-tab-active" data-tab="todo" role="tab" aria-selected="true">Todo</button>
@@ -156,6 +178,88 @@
     const tabBtns = shadowRoot.querySelectorAll('.kcn-tab-btn');
     const tabPanes = shadowRoot.querySelectorAll('.kcn-tab-pane');
     const todoPane = shadowRoot.querySelector('[data-pane="todo"]');
+
+    // Alarm elements
+    const alarmBanner = shadowRoot.getElementById('kcn-alarm-banner');
+    const alarmBadge = shadowRoot.getElementById('kcn-alarm-banner-badge');
+    const alarmTitle = shadowRoot.getElementById('kcn-alarm-banner-title');
+    const alarmStopBtn = shadowRoot.getElementById('kcn-alarm-stop-btn');
+    const alarmSnoozeBtn = shadowRoot.getElementById('kcn-alarm-snooze-btn');
+    const alarmDoneBtn = shadowRoot.getElementById('kcn-alarm-done-btn');
+    const preToast = shadowRoot.getElementById('kcn-pre-toast');
+    const preToastText = shadowRoot.getElementById('kcn-pre-toast-text');
+
+    let currentRingingTodo = null;
+
+    // Alarm Banner Control
+    function showAlarmBanner(todo, isMissed = false) {
+      if (!todo) return;
+      currentRingingTodo = todo;
+      alarmTitle.textContent = todo.title;
+      alarmBadge.textContent = isMissed ? 'MISSED REMINDER' : 'REMINDER';
+      alarmBanner.classList.remove('kcn-hidden');
+      panel.classList.add('kcn-alarm-pulsing');
+      openPanel();
+      STATE.isPinned = true;
+      pinBtn.classList.add('kcn-pinned');
+      pinBtn.title = 'Unpin panel';
+    }
+
+    function hideAlarmBanner() {
+      currentRingingTodo = null;
+      alarmBanner.classList.add('kcn-hidden');
+      panel.classList.remove('kcn-alarm-pulsing');
+    }
+
+    function showPreAlert(todo) {
+      if (!todo || !preToastText) return;
+      preToastText.textContent = `${todo.title} in 5 min`;
+      preToast.classList.remove('kcn-hidden');
+      pill.classList.add('kcn-pill-alert');
+      setTimeout(() => {
+        preToast.classList.add('kcn-hidden');
+        pill.classList.remove('kcn-pill-alert');
+      }, 6000);
+    }
+
+    alarmStopBtn?.addEventListener('click', () => {
+      if (!currentRingingTodo) return;
+      chrome.runtime.sendMessage({ type: 'ALARM_STOP', payload: { id: currentRingingTodo.id } });
+      hideAlarmBanner();
+    });
+
+    alarmSnoozeBtn?.addEventListener('click', () => {
+      if (!currentRingingTodo) return;
+      chrome.runtime.sendMessage({ type: 'ALARM_SNOOZE', payload: { id: currentRingingTodo.id } });
+      hideAlarmBanner();
+    });
+
+    alarmDoneBtn?.addEventListener('click', () => {
+      if (!currentRingingTodo) return;
+      chrome.runtime.sendMessage({ type: 'ALARM_DONE', payload: { id: currentRingingTodo.id } });
+      hideAlarmBanner();
+    });
+
+    // Listen for alarm broadcasts from background service worker
+    chrome.runtime.onMessage.addListener((request) => {
+      if (request?.type === 'ALARM_RINGING') {
+        showAlarmBanner(request.payload?.todo, request.payload?.isMissed);
+      } else if (request?.type === 'ALARM_DISMISSED') {
+        hideAlarmBanner();
+      } else if (request?.type === 'PRE_ALERT') {
+        showPreAlert(request.payload?.todo);
+      }
+    });
+
+    // Check if an alarm is already ringing on page load
+    try {
+      chrome.runtime.sendMessage({ type: 'ALARM_STATUS' }, (res) => {
+        if (chrome.runtime.lastError) return;
+        if (res?.ok && Array.isArray(res.data) && res.data.length > 0) {
+          showAlarmBanner(res.data[0]);
+        }
+      });
+    } catch (_) {}
 
     // Badge Handler
     function updateBadge(count) {

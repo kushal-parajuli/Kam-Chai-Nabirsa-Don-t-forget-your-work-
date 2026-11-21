@@ -4,7 +4,7 @@ A personal Chrome extension (Manifest V3) providing an unobtrusive floating prod
 
 ## Key Features
 
-- **Todo Tab**: Organize daily tasks with check-off, editing, and reliable time-based alarms with snoozing.
+- **Todo Tab**: Create, organize, and tick off tasks. Set time reminders with quick chips (+10m, +1h, Tomorrow 9 AM) or custom dates. Includes 5-minute pre-alerts, continuous synthetic alarm beeps via Web Audio API, repeats, snoozing, and missed-reminder detection.
 - **Notes Tab**: Quickly save text snippets and clipboard images directly to offline storage.
 - **Downloader Tab**: Download personal video (MP4) or audio (MP3) files locally via yt-dlp.
 
@@ -66,7 +66,7 @@ This tool is designed strictly for local personal use and educational practice. 
 - Content scripts cannot run on internal browser pages (e.g. `chrome://` URLs, Chrome Web Store, and the built-in New Tab page). Use the toolbar popup fallback on these pages.
 - To display the widget on local HTML files (`file:///...`), enable **"Allow access to file URLs"** in Chrome's extension details page (`chrome://extensions` > Details for Kam Chai Nabirsa).
 - Chrome may show a standard "Disable developer mode extensions" prompt or warning upon browser startup when running unpacked extensions.
-- Alarms require the Chrome browser process to be active.
+- Reminders and alarms fire while the Chrome browser process is running. If Chrome was closed when a reminder was scheduled, it fires immediately as a "Missed" alarm as soon as Chrome is launched.
 
 ## License
 

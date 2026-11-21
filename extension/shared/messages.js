@@ -1,5 +1,5 @@
 /**
- * Message types for communication between content scripts, popup, and service worker.
+ * Message types for communication between content scripts, popup, offscreen, and service worker.
  */
 export const MESSAGES = {
   // Todo operations
@@ -12,6 +12,19 @@ export const MESSAGES = {
 
   // Broadcast events
   TODOS_CHANGED: 'TODOS_CHANGED',
+
+  // Reminders & Alarms
+  PRE_ALERT: 'PRE_ALERT',
+  ALARM_RINGING: 'ALARM_RINGING',
+  ALARM_STOP: 'ALARM_STOP',
+  ALARM_SNOOZE: 'ALARM_SNOOZE',
+  ALARM_DONE: 'ALARM_DONE',
+  ALARM_DISMISSED: 'ALARM_DISMISSED',
+  ALARM_STATUS: 'ALARM_STATUS',
+
+  // Offscreen audio synthesis
+  AUDIO_PLAY_ALARM: 'AUDIO_PLAY_ALARM',
+  AUDIO_STOP_ALARM: 'AUDIO_STOP_ALARM',
 
   // Notes operations
   NOTE_LIST: 'NOTE_LIST',

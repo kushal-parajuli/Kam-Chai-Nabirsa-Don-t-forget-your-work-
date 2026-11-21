@@ -259,17 +259,32 @@ widgetPosition (edge and vertical offset), widgetOpacity (0.2 to 1, default 0.35
 • A Clear completed button.
 8.3 Reminders (alarm behaviour)
 When a todo has remindAt:
-1.  Create chrome.alarms alarm named todo:<id> for that time.
-2.  When it fires, the service worker:
-    ◦ Shows a notification (chrome.notifications.create) with requireInteraction: true, title Kam Chai Nabirsa, message = todo title, and buttons Snooze 5 min and Mark done.
-    ◦ Sets the toolbar badge text to the count of due todos with a red background.
-    ◦ Plays the alarm sound through the offscreen document if soundEnabled.
-    ◦ Marks reminded: true.
-3.  Notification buttons: Snooze reschedules the alarm (+5 minutes, snoozedUntil); Mark done completes the todo and clears its alarm and badge count.
-4.  Rehydration: on service worker start, chrome.runtime.onInstalled, and chrome.runtime.onStartup, recompute all alarms from IndexedDB. If a reminder time passed while Chrome was closed, fire it immediately as overdue.
-5.  Deleting, completing or editing a todo must clear or recreate its alarm.
-6.  If notification permission is denied by the OS, fall back to badge only and show a hint in the widget.
-7.  Do not set reminders earlier than the current time plus 30 seconds (alarm precision limit); validate in the UI.
+1.  Timing & Constants (shared/constants.js):
+    ◦ PRE_ALERT_MIN = 5, RING_SECONDS = 60, REPEAT_MINUTES = 5, MAX_REPEATS = 10, SNOOZE_MINUTES = 5, MIN_LEAD_SECONDS = 30.
+2.  Scheduling:
+    ◦ Alarm todo:<id> at remindAt.
+    ◦ Alarm pre:<id> at remindAt minus 5 minutes (skipped if reminder is less than 5 minutes away when created).
+3.  5-minute pre-alert:
+    ◦ pre:<id> fires: marks preReminded: true, broadcasts PRE_ALERT to all tabs (shows toast "<title> in 5 min" and indicator dot on pill), and shows a quiet, non-sticky system notification.
+4.  Alarm at exact time:
+    ◦ todo:<id> fires: sets ringing: true, increments ringCount, sets lastRingAt, schedules stop:<id> (60s) and repeat:<id> (5 min).
+    ◦ Offscreen document (offscreen/offscreen.html + offscreen.js) synthesizes an 880 Hz beep pattern (200ms on / 300ms off) via the Web Audio API without audio files.
+    ◦ Broadcasts ALARM_RINGING to all tabs: widget auto-opens, pins itself open, pulses red, and displays an alarm banner with Stop, Snooze 5 min, and Mark done buttons.
+    ◦ Creates a persistent system notification with requireInteraction: true and buttons Snooze 5 min / Mark done.
+    ◦ Sets toolbar badge text to the number of ringing/overdue todos with a red background.
+5.  Repeats & Silencing:
+    ◦ stop:<id> fires after 60s: stops the sound, but preserves the pinned banner and badge.
+    ◦ repeat:<id> fires after 5 min: if still ringing and ringCount < MAX_REPEATS, rings again for 60s. After MAX_REPEATS, stops repeating audio while keeping the banner.
+6.  Actions (Stop, Snooze, Mark done):
+    ◦ Stop: silences sound, cancels repeats, dismisses alarm (ringing = false).
+    ◦ Snooze: dismisses alarm and schedules a new reminder in 5 minutes (snoozedUntil).
+    ◦ Mark done: dismisses alarm and completes the todo.
+    ◦ Works interchangeably from the widget banner, system notifications, or any tab, synchronizing everywhere.
+7.  Rehydration:
+    ◦ On service worker start, onInstalled, and onStartup, rehydrates all alarms from IndexedDB. If a reminder time passed while Chrome was closed, it fires immediately as a "Missed" reminder.
+    ◦ Deleting, completing, or editing a todo clears all associated alarms and silences sound.
+8.  Validation:
+    ◦ UI validates reminders to be at least 30 seconds into the future.
 8.4 Notes tab
 • A text area and a drop/paste zone. Pressing Ctrl+V inside the zone handles:
     ◦ plain text: saved as a text note,

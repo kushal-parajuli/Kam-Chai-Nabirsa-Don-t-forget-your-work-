@@ -716,6 +716,352 @@
   line-height: 1.5;
 }
 
+/* =========================================
+   REMINDERS & ALARM STYLING (PHASE 3)
+   ========================================= */
+
+/* Alarm Ringing Banner */
+.kcn-alarm-banner {
+  background-color: #FEF2F2;
+  border-bottom: 2px solid #EF4444;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: kcn-slide-down 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 10;
+}
+
+@keyframes kcn-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.kcn-theme-dark .kcn-alarm-banner,
+:host(:not(.kcn-theme-light)) .kcn-alarm-banner {
+  background-color: #450A0A;
+  border-bottom-color: #EF4444;
+}
+
+.kcn-alarm-banner-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kcn-alarm-banner-badge {
+  background-color: #EF4444;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.kcn-alarm-banner-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #991B1B;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kcn-theme-dark .kcn-alarm-banner-title,
+:host(:not(.kcn-theme-light)) .kcn-alarm-banner-title {
+  color: #FEE2E2;
+}
+
+.kcn-alarm-banner-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.kcn-alarm-action-btn {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.kcn-alarm-stop {
+  background-color: #E2E8F0;
+  color: #1E293B;
+}
+
+.kcn-alarm-stop:hover {
+  background-color: #CBD5E1;
+}
+
+.kcn-alarm-snooze {
+  background-color: #FEF3C7;
+  color: #92400E;
+}
+
+.kcn-alarm-snooze:hover {
+  background-color: #FDE68A;
+}
+
+.kcn-alarm-done {
+  background-color: #10B981;
+  color: #FFFFFF;
+}
+
+.kcn-alarm-done:hover {
+  background-color: #059669;
+}
+
+/* Panel Pulsing during Alarm */
+.kcn-panel.kcn-alarm-pulsing {
+  border-color: #EF4444 !important;
+  animation: kcn-pulse-red 1.2s infinite ease-in-out;
+}
+
+@keyframes kcn-pulse-red {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4), 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(239, 68, 68, 0.75), 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Pre-alert 5-min Toast */
+.kcn-pre-toast {
+  background-color: #312E81;
+  color: #EEF2FF;
+  padding: 8px 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0 14px 8px 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  animation: kcn-slide-down 0.2s ease;
+}
+
+.kcn-pill.kcn-pill-alert {
+  box-shadow: 0 0 16px #F59E0B !important;
+}
+
+/* Reminder Picker in Todo Tab */
+.kcn-todo-bell-btn {
+  background: transparent;
+  border: 1px solid var(--kcn-border);
+  border-radius: 6px;
+  padding: 0 8px;
+  color: var(--kcn-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.kcn-todo-bell-btn:hover {
+  color: var(--kcn-text);
+  border-color: var(--kcn-primary);
+}
+
+.kcn-todo-bell-btn.kcn-bell-open {
+  background-color: var(--kcn-primary-light);
+  color: var(--kcn-primary);
+  border-color: var(--kcn-primary);
+}
+
+.kcn-todo-bell-btn.kcn-bell-active {
+  color: var(--kcn-primary);
+  border-color: var(--kcn-primary);
+}
+
+.kcn-reminder-row {
+  background-color: var(--kcn-bg-secondary);
+  border: 1px solid var(--kcn-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kcn-reminder-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kcn-reminder-row-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--kcn-text-muted);
+}
+
+.kcn-reminder-active-chip {
+  background-color: var(--kcn-primary-light);
+  color: var(--kcn-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kcn-reminder-chip-clear {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.kcn-quick-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.kcn-chip-btn {
+  background-color: var(--kcn-bg);
+  border: 1px solid var(--kcn-border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--kcn-text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.kcn-chip-btn:hover {
+  border-color: var(--kcn-primary);
+  color: var(--kcn-primary);
+}
+
+.kcn-custom-time-row {
+  display: flex;
+  width: 100%;
+}
+
+.kcn-dt-input {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--kcn-border);
+  border-radius: 4px;
+  background-color: var(--kcn-bg);
+  color: var(--kcn-text);
+  outline: none;
+}
+
+.kcn-dt-input:focus {
+  border-color: var(--kcn-primary);
+}
+
+/* Item Time Chips */
+.kcn-todo-content-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kcn-time-chip {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background-color: rgba(79, 70, 229, 0.1);
+  color: var(--kcn-primary);
+  display: inline-block;
+  cursor: default;
+}
+
+.kcn-chip-amber {
+  background-color: #FEF3C7 !important;
+  color: #D97706 !important;
+}
+
+.kcn-chip-overdue {
+  background-color: #FEE2E2 !important;
+  color: #DC2626 !important;
+}
+
+.kcn-bell-has-reminder {
+  color: var(--kcn-primary) !important;
+}
+
+/* Item Reminder Popover */
+.kcn-item-reminder-popover {
+  background-color: var(--kcn-bg);
+  border: 1px solid var(--kcn-border);
+  border-radius: 8px;
+  padding: 8px;
+  margin: 4px 0 8px 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kcn-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.kcn-popover-close {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--kcn-text-muted);
+}
+
+.kcn-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.kcn-popover-btn-remove {
+  background: none;
+  border: none;
+  color: #EF4444;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.kcn-popover-btn-cancel {
+  background: none;
+  border: none;
+  color: var(--kcn-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   .kcn-pill,
@@ -723,7 +1069,10 @@
   .kcn-tab-btn,
   .kcn-icon-btn,
   .kcn-toast,
-  .kcn-completed-chevron {
+  .kcn-completed-chevron,
+  .kcn-alarm-banner,
+  .kcn-pre-toast,
+  .kcn-panel.kcn-alarm-pulsing {
     transition: none !important;
     animation: none !important;
   }

@@ -1,4 +1,63 @@
 import { MESSAGES } from '../../shared/messages.js';
+import { MIN_LEAD_SECONDS } from '../../shared/constants.js';
+
+/**
+ * Formats relative time remaining until a reminder timestamp.
+ * @param {number} epochMs 
+ * @returns {{ text: string, isOverdue: boolean, isAmber: boolean }}
+ */
+export function formatTimeLeft(epochMs) {
+  if (!epochMs) return { text: '', isOverdue: false, isAmber: false };
+
+  const diff = epochMs - Date.now();
+  if (diff <= 0) {
+    return { text: 'Overdue', isOverdue: true, isAmber: false };
+  }
+
+  const totalMinutes = Math.floor(diff / 60000);
+  const totalHours = Math.floor(totalMinutes / 60);
+  const totalDays = Math.floor(totalHours / 24);
+
+  let text = '';
+  if (totalDays > 0) {
+    const remHours = totalHours % 24;
+    text = remHours > 0 ? `in ${totalDays}d ${remHours}h` : `in ${totalDays}d`;
+  } else if (totalHours > 0) {
+    const remMin = totalMinutes % 60;
+    text = remMin > 0 ? `in ${totalHours}h ${remMin}m` : `in ${totalHours}h`;
+  } else {
+    text = `in ${Math.max(1, totalMinutes)}m`;
+  }
+
+  const isAmber = totalMinutes < 5;
+  return { text, isOverdue: false, isAmber };
+}
+
+/**
+ * Converts a Date object to YYYY-MM-DDTHH:mm string for datetime-local inputs.
+ * @param {Date} date 
+ * @returns {string}
+ */
+function toDatetimeLocal(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const Y = date.getFullYear();
+  const M = pad(date.getMonth() + 1);
+  const D = pad(date.getDate());
+  const h = pad(date.getHours());
+  const m = pad(date.getMinutes());
+  return `${Y}-${M}-${D}T${h}:${m}`;
+}
+
+/**
+ * Calculates epoch ms for tomorrow at 9:00 AM.
+ * @returns {number}
+ */
+function getTomorrow9AM() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  return d.getTime();
+}
 
 /**
  * Initializes the Todo tab interface inside the Shadow DOM pane.
@@ -14,6 +73,9 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
   let isCompletedExpanded = false;
   let undoTimer = null;
   let lastDeletedTodo = null;
+  let newTodoRemindAt = null;
+  let isAddReminderRowOpen = false;
+  let refreshTimer = null;
 
   // Render Skeleton Template inside pane
   paneElement.innerHTML = `
@@ -28,6 +90,12 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
           maxlength="200" 
           aria-label="New task title"
         />
+        <button type="button" class="kcn-todo-bell-btn" id="kcn-toggle-reminder-row-btn" aria-label="Set reminder before adding" title="Set reminder">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+        </button>
         <button type="submit" class="kcn-todo-add-btn" id="kcn-todo-add-btn" aria-label="Add task" title="Add task (Enter)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -35,6 +103,25 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
           </svg>
         </button>
       </form>
+
+      <!-- Pre-Add Reminder Row (Revealed by bell button) -->
+      <div class="kcn-reminder-row kcn-hidden" id="kcn-reminder-row">
+        <div class="kcn-reminder-row-header">
+          <span class="kcn-reminder-row-label">Reminder:</span>
+          <div class="kcn-reminder-active-chip kcn-hidden" id="kcn-reminder-active-chip">
+            <span id="kcn-reminder-chip-text"></span>
+            <button type="button" class="kcn-reminder-chip-clear" id="kcn-reminder-chip-clear" title="Clear reminder" aria-label="Clear reminder">×</button>
+          </div>
+        </div>
+        <div class="kcn-quick-chips">
+          <button type="button" class="kcn-chip-btn" data-preset="10m">+10 min</button>
+          <button type="button" class="kcn-chip-btn" data-preset="1h">+1 hour</button>
+          <button type="button" class="kcn-chip-btn" data-preset="tomorrow">Tomorrow 9 AM</button>
+        </div>
+        <div class="kcn-custom-time-row">
+          <input type="datetime-local" class="kcn-dt-input" id="kcn-dt-input" aria-label="Custom reminder date and time" />
+        </div>
+      </div>
 
       <!-- Error alert -->
       <div class="kcn-todo-error kcn-hidden" id="kcn-todo-error" role="alert"></div>
@@ -81,9 +168,15 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
     </div>
   `;
 
-  // Element Selectors
+  // Selectors
   const form = paneElement.querySelector('#kcn-todo-form');
   const input = paneElement.querySelector('#kcn-todo-input');
+  const toggleReminderRowBtn = paneElement.querySelector('#kcn-toggle-reminder-row-btn');
+  const reminderRow = paneElement.querySelector('#kcn-reminder-row');
+  const reminderActiveChip = paneElement.querySelector('#kcn-reminder-active-chip');
+  const reminderChipText = paneElement.querySelector('#kcn-reminder-chip-text');
+  const reminderChipClear = paneElement.querySelector('#kcn-reminder-chip-clear');
+  const dtInput = paneElement.querySelector('#kcn-dt-input');
   const errorEl = paneElement.querySelector('#kcn-todo-error');
   const openListEl = paneElement.querySelector('#kcn-todo-open-list');
   const completedSection = paneElement.querySelector('#kcn-completed-section');
@@ -103,7 +196,7 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
     setTimeout(() => {
       errorEl.classList.add('kcn-hidden');
       errorEl.textContent = '';
-    }, 4000);
+    }, 4500);
   }
 
   // Messaging helper
@@ -127,6 +220,71 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
     });
   }
 
+  // Pre-add Reminder Row Logic
+  function updatePreAddReminderChip() {
+    if (newTodoRemindAt) {
+      reminderActiveChip.classList.remove('kcn-hidden');
+      toggleReminderRowBtn.classList.add('kcn-bell-active');
+      const date = new Date(newTodoRemindAt);
+      reminderChipText.textContent = date.toLocaleTimeString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } else {
+      reminderActiveChip.classList.add('kcn-hidden');
+      toggleReminderRowBtn.classList.remove('kcn-bell-active');
+      reminderChipText.textContent = '';
+      if (dtInput) dtInput.value = '';
+    }
+  }
+
+  function setPreAddReminderTime(ms) {
+    const minTime = Date.now() + (MIN_LEAD_SECONDS * 1000);
+    if (ms < minTime) {
+      showError('Reminder must be at least 30 seconds into the future.');
+      return false;
+    }
+    newTodoRemindAt = ms;
+    updatePreAddReminderChip();
+    return true;
+  }
+
+  toggleReminderRowBtn?.addEventListener('click', () => {
+    isAddReminderRowOpen = !isAddReminderRowOpen;
+    reminderRow.classList.toggle('kcn-hidden', !isAddReminderRowOpen);
+    toggleReminderRowBtn.classList.toggle('kcn-bell-open', isAddReminderRowOpen);
+
+    if (isAddReminderRowOpen && dtInput) {
+      // Set min attribute to now + 30s
+      dtInput.min = toDatetimeLocal(new Date(Date.now() + (MIN_LEAD_SECONDS * 1000)));
+    }
+  });
+
+  reminderChipClear?.addEventListener('click', () => {
+    newTodoRemindAt = null;
+    updatePreAddReminderChip();
+  });
+
+  // Preset chips
+  paneElement.querySelectorAll('.kcn-chip-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const preset = btn.getAttribute('data-preset');
+      const now = Date.now();
+      if (preset === '10m') {
+        setPreAddReminderTime(now + 10 * 60 * 1000);
+      } else if (preset === '1h') {
+        setPreAddReminderTime(now + 60 * 60 * 1000);
+      } else if (preset === 'tomorrow') {
+        setPreAddReminderTime(getTomorrow9AM());
+      }
+    });
+  });
+
+  // Datetime input
+  dtInput?.addEventListener('change', () => {
+    if (!dtInput.value) return;
+    const selectedMs = new Date(dtInput.value).getTime();
+    if (isNaN(selectedMs)) return;
+    setPreAddReminderTime(selectedMs);
+  });
+
   // Load Todos from Service Worker
   async function loadTodos() {
     try {
@@ -137,6 +295,19 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
       console.error('[KCN Todo] Failed to load todos:', err);
       showError('Unable to load tasks from storage.');
     }
+  }
+
+  // Periodic refresh of reminder time chips (every 30s)
+  function refreshTimeChips() {
+    paneElement.querySelectorAll('.kcn-time-chip').forEach((chip) => {
+      const ms = Number(chip.getAttribute('data-remind-at'));
+      if (ms) {
+        const { text, isOverdue, isAmber } = formatTimeLeft(ms);
+        chip.textContent = text;
+        chip.classList.toggle('kcn-chip-overdue', isOverdue);
+        chip.classList.toggle('kcn-chip-amber', isAmber);
+      }
+    });
   }
 
   // Render Todos list
@@ -211,16 +382,51 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
     checkWrap.appendChild(customCheck);
     item.appendChild(checkWrap);
 
-    // Title element (Safe rendering via textContent)
+    // Content container (title + clock chip)
+    const contentWrap = document.createElement('div');
+    contentWrap.className = 'kcn-todo-content-wrap';
+
     const titleEl = document.createElement('span');
     titleEl.className = 'kcn-todo-title';
     titleEl.textContent = todo.title;
     titleEl.title = 'Double-click to edit';
-    item.appendChild(titleEl);
+    contentWrap.appendChild(titleEl);
+
+    // Clock chip if reminder is set
+    if (todo.remindAt && !todo.done) {
+      const timeInfo = formatTimeLeft(todo.remindAt);
+      const clockChip = document.createElement('span');
+      clockChip.className = `kcn-time-chip ${timeInfo.isOverdue ? 'kcn-chip-overdue' : ''} ${timeInfo.isAmber ? 'kcn-chip-amber' : ''}`;
+      clockChip.setAttribute('data-remind-at', String(todo.remindAt));
+      clockChip.textContent = timeInfo.text;
+      clockChip.title = `Reminder: ${new Date(todo.remindAt).toLocaleString()}`;
+      contentWrap.appendChild(clockChip);
+    }
+
+    item.appendChild(contentWrap);
 
     // Actions container
     const actions = document.createElement('div');
     actions.className = 'kcn-todo-actions';
+
+    // Reminder Bell button for existing todo
+    const bellBtn = document.createElement('button');
+    bellBtn.className = `kcn-todo-action-btn ${todo.remindAt ? 'kcn-bell-has-reminder' : ''}`;
+    bellBtn.setAttribute('aria-label', todo.remindAt ? 'Change or remove reminder' : 'Set reminder');
+    bellBtn.title = todo.remindAt ? `Reminder set: ${new Date(todo.remindAt).toLocaleTimeString()}` : 'Add reminder';
+    bellBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="${todo.remindAt ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+      </svg>
+    `;
+
+    // Toggle item inline reminder editor
+    bellBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openItemReminderDialog(todo, item);
+    });
+    actions.appendChild(bellBtn);
 
     // Edit button
     const editBtn = document.createElement('button');
@@ -262,7 +468,7 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
       editInput.value = todo.title;
       editInput.setAttribute('aria-label', 'Edit task title');
 
-      item.replaceChild(editInput, titleEl);
+      contentWrap.replaceChild(editInput, titleEl);
       editInput.focus();
       editInput.select();
 
@@ -284,10 +490,9 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
           }
         }
 
-        // Cancel / revert if unchanged or failed
         item.classList.remove('kcn-editing');
-        if (item.contains(editInput)) {
-          item.replaceChild(titleEl, editInput);
+        if (contentWrap.contains(editInput)) {
+          contentWrap.replaceChild(titleEl, editInput);
         }
       }
 
@@ -295,8 +500,8 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
         if (isFinished) return;
         isFinished = true;
         item.classList.remove('kcn-editing');
-        if (item.contains(editInput)) {
-          item.replaceChild(titleEl, editInput);
+        if (contentWrap.contains(editInput)) {
+          contentWrap.replaceChild(titleEl, editInput);
         }
       }
 
@@ -332,6 +537,89 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
     });
 
     return item;
+  }
+
+  // Inline reminder dialog for an existing item
+  function openItemReminderDialog(todo, itemElement) {
+    const existingDialog = paneElement.querySelector('.kcn-item-reminder-popover');
+    if (existingDialog) {
+      existingDialog.remove();
+    }
+
+    const popover = document.createElement('div');
+    popover.className = 'kcn-item-reminder-popover';
+    popover.innerHTML = `
+      <div class="kcn-popover-header">
+        <span>Set Reminder</span>
+        <button type="button" class="kcn-popover-close" aria-label="Close">×</button>
+      </div>
+      <div class="kcn-quick-chips">
+        <button type="button" class="kcn-chip-btn" data-preset="10m">+10 min</button>
+        <button type="button" class="kcn-chip-btn" data-preset="1h">+1 hour</button>
+        <button type="button" class="kcn-chip-btn" data-preset="tomorrow">Tomorrow 9 AM</button>
+      </div>
+      <div class="kcn-custom-time-row" style="margin-top:6px;">
+        <input type="datetime-local" class="kcn-dt-input kcn-popover-dt" />
+      </div>
+      <div class="kcn-popover-actions">
+        ${todo.remindAt ? '<button type="button" class="kcn-popover-btn-remove">Remove Reminder</button>' : ''}
+        <button type="button" class="kcn-popover-btn-cancel">Cancel</button>
+      </div>
+    `;
+
+    // Position popover below item
+    itemElement.insertAdjacentElement('afterend', popover);
+
+    const dtPicker = popover.querySelector('.kcn-popover-dt');
+    if (dtPicker) {
+      dtPicker.min = toDatetimeLocal(new Date(Date.now() + (MIN_LEAD_SECONDS * 1000)));
+      if (todo.remindAt && todo.remindAt > Date.now()) {
+        dtPicker.value = toDatetimeLocal(new Date(todo.remindAt));
+      }
+    }
+
+    async function applyReminder(remindAt) {
+      try {
+        await sendMsg(MESSAGES.TODO_UPDATE, {
+          id: todo.id,
+          updates: { remindAt, reminded: false, preReminded: false }
+        });
+        popover.remove();
+        await loadTodos();
+      } catch (err) {
+        console.error('[KCN Todo] Failed to update reminder:', err);
+        showError('Failed to update reminder.');
+      }
+    }
+
+    popover.querySelector('.kcn-popover-close')?.addEventListener('click', () => popover.remove());
+    popover.querySelector('.kcn-popover-btn-cancel')?.addEventListener('click', () => popover.remove());
+    popover.querySelector('.kcn-popover-btn-remove')?.addEventListener('click', () => applyReminder(null));
+
+    popover.querySelectorAll('.kcn-chip-btn').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const preset = chip.getAttribute('data-preset');
+        const now = Date.now();
+        if (preset === '10m') {
+          applyReminder(now + 10 * 60 * 1000);
+        } else if (preset === '1h') {
+          applyReminder(now + 60 * 60 * 1000);
+        } else if (preset === 'tomorrow') {
+          applyReminder(getTomorrow9AM());
+        }
+      });
+    });
+
+    dtPicker?.addEventListener('change', () => {
+      if (!dtPicker.value) return;
+      const ms = new Date(dtPicker.value).getTime();
+      const minTime = Date.now() + (MIN_LEAD_SECONDS * 1000);
+      if (ms < minTime) {
+        showError('Reminder must be at least 30 seconds into the future.');
+        return;
+      }
+      applyReminder(ms);
+    });
   }
 
   // 5-second Undo Toast mechanism
@@ -382,7 +670,19 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
 
     try {
       input.value = '';
-      await sendMsg(MESSAGES.TODO_ADD, { title: trimmed });
+      const remindAtToSave = newTodoRemindAt;
+
+      // Reset pre-add reminder state
+      newTodoRemindAt = null;
+      updatePreAddReminderChip();
+      isAddReminderRowOpen = false;
+      reminderRow.classList.add('kcn-hidden');
+      toggleReminderRowBtn.classList.remove('kcn-bell-open');
+
+      await sendMsg(MESSAGES.TODO_ADD, {
+        title: trimmed,
+        remindAt: remindAtToSave
+      });
       await loadTodos();
       input.focus();
     } catch (err) {
@@ -421,8 +721,15 @@ export function initTodoTab({ paneElement, onBadgeUpdate }) {
   // Initial load
   loadTodos();
 
+  // Refresh time chips every 30 seconds
+  refreshTimer = setInterval(refreshTimeChips, 30000);
+
   return {
-    reload: loadTodos
+    reload: loadTodos,
+    cleanup: () => {
+      clearInterval(refreshTimer);
+      chrome.runtime.onMessage.removeListener(onMessageListener);
+    }
   };
 }
 

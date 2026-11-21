@@ -1,5 +1,6 @@
 import { MESSAGES, createResponse } from '../shared/messages.js';
 import * as db from './db.js';
+import * as reminders from './reminders.js';
 
 /**
  * Default user settings.
@@ -38,7 +39,7 @@ async function injectWidgetIntoAllTabs() {
           files: ['content/widget.js']
         });
       } catch (tabErr) {
-        // Silently skip tabs where script execution is restricted (e.g. chrome://, Web Store)
+        // Silently skip restricted tabs
       }
     }
   } catch (err) {
@@ -48,7 +49,6 @@ async function injectWidgetIntoAllTabs() {
 
 /**
  * Broadcasts a message to all active tabs.
- * Used to keep widgets synchronized when data changes in another tab.
  * @param {object} message 
  */
 async function broadcastToAllTabs(message) {
@@ -56,9 +56,7 @@ async function broadcastToAllTabs(message) {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
       if (!tab.id) continue;
-      chrome.tabs.sendMessage(tab.id, message).catch(() => {
-        // Tab may not have content script mounted; ignore silently
-      });
+      chrome.tabs.sendMessage(tab.id, message).catch(() => {});
     }
   } catch (err) {
     console.error('[KCN Service Worker] Error broadcasting message:', err);
@@ -87,11 +85,12 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     console.error('[KCN Service Worker] Failed to initialize default settings:', err);
   }
 
-  // Pre-open DB so object stores are ready
+  // Pre-open DB and rehydrate reminder alarms
   try {
     await db.openDB();
+    await reminders.rehydrateAllReminders();
   } catch (dbErr) {
-    console.error('[KCN Service Worker] Failed to open IndexedDB on install:', dbErr);
+    console.error('[KCN Service Worker] Initialization error on install:', dbErr);
   }
 
   // Inject into all already-open tabs
@@ -105,8 +104,9 @@ chrome.runtime.onStartup.addListener(async () => {
   console.log('[KCN Service Worker] Browser startup event received.');
   try {
     await db.openDB();
+    await reminders.rehydrateAllReminders();
   } catch (dbErr) {
-    console.error('[KCN Service Worker] Failed to open IndexedDB on startup:', dbErr);
+    console.error('[KCN Service Worker] Initialization error on startup:', dbErr);
   }
   await injectWidgetIntoAllTabs();
 });
@@ -123,11 +123,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       db.getTodos()
         .then((todos) => sendResponse(createResponse(true, todos)))
         .catch((err) => sendResponse(createResponse(false, null, err.message)));
-      return true; // asynchronous response
+      return true;
 
     case MESSAGES.TODO_ADD:
       db.addTodo(payload || {})
-        .then((newTodo) => {
+        .then(async (newTodo) => {
+          if (newTodo.remindAt) {
+            await reminders.scheduleReminder(newTodo);
+          }
+          await reminders.refreshBadge();
           sendResponse(createResponse(true, newTodo));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
@@ -136,7 +140,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     case MESSAGES.TODO_UPDATE:
       db.updateTodo(payload?.id, payload?.updates || {})
-        .then((updatedTodo) => {
+        .then(async (updatedTodo) => {
+          if (payload?.updates?.remindAt !== undefined || payload?.updates?.done !== undefined) {
+            if (updatedTodo.done) {
+              await reminders.clearTodoAlarms(updatedTodo.id);
+            } else {
+              await reminders.scheduleReminder(updatedTodo);
+            }
+          }
+          await reminders.refreshBadge();
           sendResponse(createResponse(true, updatedTodo));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
@@ -145,7 +157,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     case MESSAGES.TODO_TOGGLE:
       db.toggleTodo(payload?.id)
-        .then((toggledTodo) => {
+        .then(async (toggledTodo) => {
+          if (toggledTodo.done) {
+            await reminders.clearTodoAlarms(toggledTodo.id);
+          } else if (toggledTodo.remindAt) {
+            await reminders.scheduleReminder(toggledTodo);
+          }
+          await reminders.refreshBadge();
           sendResponse(createResponse(true, toggledTodo));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
@@ -154,7 +172,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     case MESSAGES.TODO_DELETE:
       db.deleteTodo(payload?.id)
-        .then((deletedTodo) => {
+        .then(async (deletedTodo) => {
+          await reminders.clearTodoAlarms(payload?.id);
+          await reminders.refreshBadge();
           sendResponse(createResponse(true, deletedTodo));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
@@ -163,10 +183,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     case MESSAGES.TODO_CLEAR_DONE:
       db.clearCompletedTodos()
-        .then((deletedCount) => {
+        .then(async (deletedCount) => {
+          await reminders.refreshBadge();
           sendResponse(createResponse(true, { count: deletedCount }));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true;
+
+    // Alarms & Reminders Control
+    case MESSAGES.ALARM_STATUS:
+      db.getTodos()
+        .then((todos) => {
+          const ringingTodos = todos.filter((t) => !t.done && t.ringing);
+          sendResponse(createResponse(true, ringingTodos));
+        })
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true;
+
+    case MESSAGES.ALARM_STOP:
+      reminders.stopAlarm(payload?.id)
+        .then(() => sendResponse(createResponse(true)))
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true;
+
+    case MESSAGES.ALARM_SNOOZE:
+      reminders.snoozeAlarm(payload?.id)
+        .then(() => sendResponse(createResponse(true)))
+        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+      return true;
+
+    case MESSAGES.ALARM_DONE:
+      reminders.markDoneAlarm(payload?.id)
+        .then(() => sendResponse(createResponse(true)))
         .catch((err) => sendResponse(createResponse(false, null, err.message)));
       return true;
 
@@ -184,12 +233,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
 
     case MESSAGES.BADGE_REFRESH:
-      db.getTodos()
-        .then((todos) => {
-          const openCount = todos.filter((t) => !t.done).length;
-          sendResponse(createResponse(true, { count: openCount }));
-        })
-        .catch(() => sendResponse(createResponse(true, { count: 0 })));
+      reminders.refreshBadge()
+        .then(() => sendResponse(createResponse(true)))
+        .catch(() => sendResponse(createResponse(true)));
       return true;
 
     default:
