@@ -168,7 +168,19 @@ true after the reminder fired
 snoozedUntil
 number or null
 epoch ms
-Indexes: done, remindAt.
+preReminded
+boolean
+true after 5-minute pre-alert fired
+ringing
+boolean
+true while alarm is actively ringing
+ringCount
+number
+number of times alarm has rung
+lastRingAt
+number or null
+epoch ms when ringing started
+Index: remindAt (booleans like 'done' cannot be indexed in IndexedDB; completed/open states are filtered in JavaScript).
 Object store notes (keyPath id)
 Field
 Type

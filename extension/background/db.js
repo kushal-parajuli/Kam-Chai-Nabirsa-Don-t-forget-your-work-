@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'kcn-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbInstance = null;
 
@@ -22,12 +22,22 @@ export function openDB() {
 
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
+      const tx = event.target.transaction;
 
       // Object store: todos
+      let todoStore;
       if (!db.objectStoreNames.contains('todos')) {
-        const todoStore = db.createObjectStore('todos', { keyPath: 'id' });
-        todoStore.createIndex('done', 'done', { unique: false });
+        todoStore = db.createObjectStore('todos', { keyPath: 'id' });
         todoStore.createIndex('remindAt', 'remindAt', { unique: false });
+      } else {
+        todoStore = tx.objectStore('todos');
+        // Remove 'done' index if present (booleans are not valid IndexedDB keys)
+        if (todoStore.indexNames.contains('done')) {
+          todoStore.deleteIndex('done');
+        }
+        if (!todoStore.indexNames.contains('remindAt')) {
+          todoStore.createIndex('remindAt', 'remindAt', { unique: false });
+        }
       }
 
       // Object store: notes (created now for schema completeness)
@@ -102,7 +112,11 @@ export async function addTodo({ title, remindAt = null }) {
     updatedAt: now,
     remindAt: typeof remindAt === 'number' ? remindAt : null,
     reminded: false,
-    snoozedUntil: null
+    snoozedUntil: null,
+    preReminded: false,
+    ringing: false,
+    ringCount: 0,
+    lastRingAt: null
   };
 
   const db = await openDB();
@@ -162,6 +176,22 @@ export async function updateTodo(id, updates = {}) {
 
       if (updates.snoozedUntil !== undefined) {
         existing.snoozedUntil = updates.snoozedUntil;
+      }
+
+      if (updates.preReminded !== undefined) {
+        existing.preReminded = Boolean(updates.preReminded);
+      }
+
+      if (updates.ringing !== undefined) {
+        existing.ringing = Boolean(updates.ringing);
+      }
+
+      if (updates.ringCount !== undefined) {
+        existing.ringCount = Number(updates.ringCount) || 0;
+      }
+
+      if (updates.lastRingAt !== undefined) {
+        existing.lastRingAt = updates.lastRingAt;
       }
 
       existing.updatedAt = Date.now();
@@ -244,6 +274,7 @@ export async function deleteTodo(id) {
 
 /**
  * Deletes all completed todos from the database.
+ * Uses in-memory filtering because booleans cannot be indexed in IndexedDB.
  * @returns {Promise<number>} Count of cleared todos.
  */
 export async function clearCompletedTodos() {
@@ -251,26 +282,24 @@ export async function clearCompletedTodos() {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('todos', 'readwrite');
     const store = tx.objectStore('todos');
-    const index = store.index('done');
-    const request = index.getAllKeys(IDBKeyRange.only(true));
+    const request = store.getAll();
 
     request.onsuccess = () => {
-      const keys = request.result || [];
-      if (keys.length === 0) {
+      const allTodos = request.result || [];
+      const completedTodos = allTodos.filter((t) => Boolean(t.done));
+      if (completedTodos.length === 0) {
         resolve(0);
         return;
       }
 
-      let deletedCount = 0;
-      for (const key of keys) {
-        store.delete(key);
-        deletedCount++;
+      for (const todo of completedTodos) {
+        store.delete(todo.id);
       }
 
-      tx.oncomplete = () => resolve(deletedCount);
+      tx.oncomplete = () => resolve(completedTodos.length);
       tx.onerror = () => reject(new Error(`Failed while clearing completed todos: ${tx.error?.message}`));
     };
 
-    request.onerror = () => reject(new Error(`Failed to query completed todos: ${request.error?.message}`));
+    request.onerror = () => reject(new Error(`Failed to query todos for clearing: ${request.error?.message}`));
   });
 }
