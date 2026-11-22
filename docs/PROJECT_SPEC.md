@@ -184,7 +184,7 @@ number of times alarm has rung
 lastRingAt
 number or null
 epoch ms when ringing started
-Index: remindAt (booleans like 'done' cannot be indexed in IndexedDB; completed/open states are filtered in JavaScript).
+Indexes on todos: none (booleans like 'done' and nullable values like 'remindAt' are not indexed; all queries scan the store via getAll() or openCursor() and filter in JavaScript).
 Object store notes (keyPath id)
 Field
 Type

@@ -1,15 +1,28 @@
 // © 2026 Kushal Parajuli
 
 /**
- * IndexedDB wrapper for Kam Chai Nabirsa (database: kcn-db, version: 3).
+ * IndexedDB wrapper for Kam Chai Nabirsa (database: kcn-db, version: 4).
  * Exposes promise-based functions; never leaks raw transactions or database instances.
- * Booleans are not indexed in IndexedDB; queries filter in JavaScript.
+ * Booleans and nullable fields are NEVER indexed or queried via key ranges in IndexedDB;
+ * all queries scan the store via getAll() or openCursor() and filter in JavaScript.
  */
 
 const DB_NAME = 'kcn-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbInstance = null;
+
+/**
+ * Closes the active database connection and resets the cached instance.
+ */
+export function closeDB() {
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch (_) {}
+    dbInstance = null;
+  }
+}
 
 /**
  * Opens or returns the cached IndexedDB database connection.
@@ -27,23 +40,27 @@ export function openDB() {
       const db = event.target.result;
       const tx = event.target.transaction;
 
-      // Object store: todos
+      // Object store: todos (primary key: id)
       let todoStore;
       if (!db.objectStoreNames.contains('todos')) {
         todoStore = db.createObjectStore('todos', { keyPath: 'id' });
-        todoStore.createIndex('remindAt', 'remindAt', { unique: false });
       } else {
         todoStore = tx.objectStore('todos');
-        // Delete 'done' boolean index if previously created in older DB versions
-        if (todoStore.indexNames.contains('done')) {
-          try {
-            todoStore.deleteIndex('done');
-          } catch (err) {
-            console.warn('[KCN DB] Failed to delete legacy done index:', err);
-          }
+      }
+
+      // Delete any legacy indexes ('done', 'remindAt') to prevent invalid key or range queries
+      if (todoStore.indexNames.contains('done')) {
+        try {
+          todoStore.deleteIndex('done');
+        } catch (err) {
+          console.warn('[KCN DB] Failed to delete legacy done index:', err);
         }
-        if (!todoStore.indexNames.contains('remindAt')) {
-          todoStore.createIndex('remindAt', 'remindAt', { unique: false });
+      }
+      if (todoStore.indexNames.contains('remindAt')) {
+        try {
+          todoStore.deleteIndex('remindAt');
+        } catch (err) {
+          console.warn('[KCN DB] Failed to delete remindAt index:', err);
         }
       }
 
@@ -67,8 +84,7 @@ export function openDB() {
       dbInstance = request.result;
       dbInstance.onversionchange = () => {
         console.warn('[KCN DB] Database version change detected, closing connection.');
-        dbInstance.close();
-        dbInstance = null;
+        closeDB();
       };
       resolve(dbInstance);
     };
@@ -82,6 +98,7 @@ export function openDB() {
 
 /**
  * Retrieves all todos from the database.
+ * Sorts newest first in JavaScript.
  * @returns {Promise<Array<object>>}
  */
 export async function getTodos() {
@@ -313,32 +330,39 @@ export async function deleteTodo(id) {
 
 /**
  * Deletes all completed todos from the database in a single readwrite transaction.
- * Uses in-memory filtering because booleans cannot be indexed in IndexedDB.
- * Resolves with the count and array of deleted todos for cleanup.
+ * Opens a cursor over the whole store (no index) and deletes records where record.done is true.
+ * Resolves on tx.oncomplete with the deleted records array.
+ * Rejects on tx.onerror and tx.onabort.
  * @returns {Promise<{ count: number, deletedTodos: Array<object> }>}
  */
 export async function clearCompletedTodos() {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    let completedTodos = [];
+    const deletedTodos = [];
     const tx = db.transaction('todos', 'readwrite');
     const store = tx.objectStore('todos');
-    const request = store.getAll();
+    const cursorReq = store.openCursor(); // open cursor over the whole store (no index)
 
-    request.onsuccess = () => {
-      const allTodos = request.result || [];
-      completedTodos = allTodos.filter((t) => Boolean(t.done));
-      if (completedTodos.length === 0) {
-        return;
-      }
-
-      for (const todo of completedTodos) {
-        store.delete(todo.id);
+    cursorReq.onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (cursor) {
+        const record = cursor.value;
+        if (Boolean(record?.done)) {
+          deletedTodos.push(record);
+          cursor.delete();
+        }
+        cursor.continue();
       }
     };
 
+    cursorReq.onerror = () => {
+      const errMsg = cursorReq.error?.message || 'Cursor error';
+      console.error('[KCN DB] Cursor error scanning completed todos:', cursorReq.error);
+      reject(new Error(`Cursor scan failed: ${errMsg}`));
+    };
+
     tx.oncomplete = () => {
-      resolve({ count: completedTodos.length, deletedTodos: completedTodos });
+      resolve({ count: deletedTodos.length, deletedTodos });
     };
 
     tx.onerror = () => {
@@ -347,10 +371,10 @@ export async function clearCompletedTodos() {
       reject(new Error(`Transaction failed: ${errMsg}`));
     };
 
-    request.onerror = () => {
-      const errMsg = request.error?.message || 'Query error';
-      console.error('[KCN DB] Failed to query todos for clearing:', request.error);
-      reject(new Error(`Failed to query todos: ${errMsg}`));
+    tx.onabort = () => {
+      const errMsg = tx.error?.message || 'Transaction aborted';
+      console.error('[KCN DB] Transaction aborted clearing completed todos:', tx.error);
+      reject(new Error(`Transaction aborted: ${errMsg}`));
     };
   });
 }
