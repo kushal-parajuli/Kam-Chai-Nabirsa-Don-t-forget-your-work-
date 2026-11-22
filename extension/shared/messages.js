@@ -1,3 +1,5 @@
+// © 2026 Kushal Parajuli
+
 /**
  * Message types for communication between content scripts, popup, offscreen, and service worker.
  */
@@ -22,9 +24,14 @@ export const MESSAGES = {
   ALARM_DISMISSED: 'ALARM_DISMISSED',
   ALARM_STATUS: 'ALARM_STATUS',
 
-  // Offscreen audio synthesis
+  // Offscreen audio synthesis & handshake
   AUDIO_PLAY_ALARM: 'AUDIO_PLAY_ALARM',
   AUDIO_STOP_ALARM: 'AUDIO_STOP_ALARM',
+  OFFSCREEN_READY: 'OFFSCREEN_READY',
+  TEST_SOUND: 'TEST_SOUND',
+
+  // Window mount check
+  CHECK_CAN_MOUNT: 'CHECK_CAN_MOUNT',
 
   // Notes operations
   NOTE_LIST: 'NOTE_LIST',

@@ -1,3 +1,5 @@
+// © 2026 Kushal Parajuli
+
 /**
  * Utility functions for formatting, sanitizing, and timing.
  */

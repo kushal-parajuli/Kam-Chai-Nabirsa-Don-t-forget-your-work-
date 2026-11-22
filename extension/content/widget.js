@@ -1,21 +1,36 @@
+// © 2026 Kushal Parajuli
+
 /**
  * Kam Chai Nabirsa - Content Script
  * Injects a floating widget into web pages inside an isolated Shadow DOM.
+ * Works strictly in normal top-level browser tabs without dynamic imports or URL fetching.
  */
 
 (function initKamChaiNabirsa() {
+  // Never run inside iframes
+  if (window !== window.top) {
+    return;
+  }
+
   // Prevent duplicate injections on the same page
   if (window.__kcnWidgetLoaded || document.getElementById('kam-chai-nabirsa-host')) {
     return;
   }
   window.__kcnWidgetLoaded = true;
 
-  // Wait for document ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupWidget, { once: true });
-  } else {
-    setupWidget();
-  }
+  // Verify that the current window is a normal Chrome window (not popup, PiP, or app)
+  try {
+    chrome.runtime.sendMessage({ type: 'CHECK_CAN_MOUNT' }, (response) => {
+      if (chrome.runtime.lastError) return;
+      if (response && response.ok && response.data?.shouldMount) {
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', setupWidget, { once: true });
+        } else {
+          setupWidget();
+        }
+      }
+    });
+  } catch (_) {}
 
   function setupWidget() {
     // Configuration & State
@@ -36,16 +51,18 @@
       pointerActive: false
     };
 
+    let todoApi = null;
+    let currentRingingTodo = null;
+
     // Create Host Element
     const host = document.createElement('div');
     host.id = 'kam-chai-nabirsa-host';
     const shadowRoot = host.attachShadow({ mode: 'open' });
 
-    // Load Stylesheet inside Shadow DOM
-    const styleLink = document.createElement('link');
-    styleLink.rel = 'stylesheet';
-    styleLink.href = chrome.runtime.getURL('content/widget.css');
-    shadowRoot.appendChild(styleLink);
+    // Inject CSS directly as a <style> tag from embedded string (no URL fetch or CSP risk)
+    const styleEl = document.createElement('style');
+    styleEl.textContent = window.__kcn_css || '';
+    shadowRoot.appendChild(styleEl);
 
     // Widget Markup
     const container = document.createElement('div');
@@ -88,7 +105,7 @@
           </div>
         </div>
 
-        <!-- Alarm Ringing Banner (Active during reminder alarm) -->
+        <!-- Alarm Ringing Banner (Active when reminder alarm fires) -->
         <div class="kcn-alarm-banner kcn-hidden" id="kcn-alarm-banner" role="alert" aria-live="assertive">
           <div class="kcn-alarm-banner-top">
             <span class="kcn-alarm-banner-badge" id="kcn-alarm-banner-badge">REMINDER</span>
@@ -119,7 +136,7 @@
 
         <!-- Tab Content Area -->
         <div class="kcn-content">
-          <!-- Todo Pane (populated by content/tabs/todo.js) -->
+          <!-- Todo Pane -->
           <div class="kcn-tab-pane kcn-pane-active" data-pane="todo" role="tabpanel"></div>
 
           <!-- Notes Pane -->
@@ -153,6 +170,9 @@
             </div>
           </div>
         </div>
+
+        <!-- Muted Footer Line -->
+        <div class="kcn-footer">© 2026 Kushal Parajuli</div>
       </div>
     `;
 
@@ -188,8 +208,6 @@
     const alarmDoneBtn = shadowRoot.getElementById('kcn-alarm-done-btn');
     const preToast = shadowRoot.getElementById('kcn-pre-toast');
     const preToastText = shadowRoot.getElementById('kcn-pre-toast-text');
-
-    let currentRingingTodo = null;
 
     // Alarm Banner Control
     function showAlarmBanner(todo, isMissed = false) {
@@ -261,7 +279,7 @@
       });
     } catch (_) {}
 
-    // Badge Handler
+    // Badge Handler (only counts open todos)
     function updateBadge(count) {
       if (!pillBadge) return;
       if (typeof count === 'number' && count > 0) {
@@ -273,26 +291,13 @@
       }
     }
 
-    // Initialize Todo Tab Component
-    (async () => {
-      try {
-        const todoModule = await import(chrome.runtime.getURL('content/tabs/todo.js'));
-        if (todoModule && typeof todoModule.initTodoTab === 'function') {
-          todoModule.initTodoTab({
-            paneElement: todoPane,
-            onBadgeUpdate: updateBadge
-          });
-        }
-      } catch (err) {
-        console.error('[KCN] Failed to dynamically load todo module:', err);
-        if (typeof window.__kcnInitTodoTab === 'function') {
-          window.__kcnInitTodoTab({
-            paneElement: todoPane,
-            onBadgeUpdate: updateBadge
-          });
-        }
-      }
-    })();
+    // Initialize Todo Tab Component (using direct script reference, no dynamic import)
+    if (typeof window.__kcn_initTodoTab === 'function') {
+      todoApi = window.__kcn_initTodoTab({
+        paneElement: todoPane,
+        onBadgeUpdate: updateBadge
+      });
+    }
 
     // Load Saved Preferences
     chrome.storage.local.get(['widgetEnabled', 'widgetPosition', 'widgetOpacity', 'theme', 'lastActiveTab'], (items) => {
@@ -320,7 +325,7 @@
       switchTab(STATE.activeTab);
     });
 
-    // Listen for storage changes from popup or background
+    // Listen for storage changes
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
 
@@ -418,6 +423,7 @@
       updatePanelPosition();
       panel.classList.add('kcn-open');
       pill.classList.add('kcn-active');
+      todoApi?.startRefresh?.();
     }
 
     function closePanel(force = false) {
@@ -425,6 +431,7 @@
       STATE.isOpen = false;
       panel.classList.remove('kcn-open');
       pill.classList.remove('kcn-active');
+      todoApi?.stopRefresh?.();
     }
 
     function togglePanel() {
@@ -475,9 +482,8 @@
     });
 
     // Dragging & Click Handling
-    // If movement > 5px, it is treated as a drag and does NOT toggle the panel.
     pill.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return; // Primary button only
+      if (e.button !== 0) return;
 
       STATE.pointerActive = true;
       STATE.hasMovedPastThreshold = false;
@@ -499,7 +505,7 @@
         STATE.hasMovedPastThreshold = true;
         STATE.isDragging = true;
         pill.classList.add('kcn-dragging');
-        closePanel(true); // Close panel while moving
+        closePanel(true);
       }
 
       if (STATE.hasMovedPastThreshold) {
@@ -508,7 +514,6 @@
         pill.style.top = `${newTop}px`;
         STATE.top = newTop;
 
-        // Snapping edge detection
         if (e.clientX < window.innerWidth / 2) {
           if (STATE.edge !== 'left') {
             STATE.edge = 'left';
@@ -540,13 +545,11 @@
       pill.classList.remove('kcn-dragging');
 
       if (STATE.hasMovedPastThreshold) {
-        // Drag completed: persist new position and do not toggle panel
         chrome.storage.local.set({
           widgetPosition: { edge: STATE.edge, top: STATE.top }
         }).catch((err) => console.error('[KCN] Failed to save position:', err));
         applyPosition();
       } else {
-        // Pointer moved <= 5px: treat strictly as a CLICK
         togglePanel();
       }
 
@@ -562,7 +565,7 @@
       applyPosition();
     });
 
-    // Keyboard Accessibility (Enter and Space toggle panel)
+    // Keyboard Accessibility
     pill.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -570,7 +573,6 @@
       }
     });
 
-    // Esc collapses the panel
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && STATE.isOpen) {
         closePanel(true);
@@ -578,7 +580,7 @@
       }
     });
 
-    // Click outside collapses the panel (if not pinned)
+    // Click outside collapses
     document.addEventListener('pointerdown', (e) => {
       if (!STATE.isOpen || STATE.isPinned) return;
       const path = e.composedPath();
@@ -587,7 +589,7 @@
       }
     });
 
-    // Handle Fullscreen Video / Elements (hide widget)
+    // Fullscreen Detection
     document.addEventListener('fullscreenchange', () => {
       if (document.fullscreenElement) {
         host.classList.add('kcn-hidden');
@@ -596,7 +598,7 @@
       }
     });
 
-    // Handle Window Resize
+    // Window Resize
     window.addEventListener('resize', () => {
       applyPosition();
     });

@@ -1,3 +1,5 @@
+// © 2026 Kushal Parajuli
+
 import { MESSAGES, createResponse } from '../shared/messages.js';
 import * as db from './db.js';
 import * as reminders from './reminders.js';
@@ -20,30 +22,35 @@ const DEFAULT_SETTINGS = {
 /**
  * Injects the content script into all open tabs matching http, https, or file schemes.
  * Ensures the widget is immediately active even on tabs opened prior to extension install/reload.
+ * Restricts injection strictly to normal Chrome windows (skips devtools, popups, and app windows).
  */
 async function injectWidgetIntoAllTabs() {
   try {
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      if (!tab.id || !tab.url) continue;
+    const windows = await chrome.windows.getAll({ populate: true });
+    for (const win of windows) {
+      if (win.type !== 'normal') continue; // Only normal browser windows
 
-      const isInjectable = tab.url.startsWith('http://') || 
-                           tab.url.startsWith('https://') || 
-                           tab.url.startsWith('file:///');
+      for (const tab of win.tabs || []) {
+        if (!tab.id || !tab.url) continue;
 
-      if (!isInjectable) continue;
+        const isInjectable = tab.url.startsWith('http://') || 
+                             tab.url.startsWith('https://') || 
+                             tab.url.startsWith('file:///');
 
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['content/widget.js']
-        });
-      } catch (tabErr) {
-        // Silently skip restricted tabs
+        if (!isInjectable) continue;
+
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content/widget-css.js', 'content/tabs/todo.js', 'content/widget.js']
+          });
+        } catch (tabErr) {
+          // Silently skip restricted tabs (e.g. Chrome Web Store)
+        }
       }
     }
   } catch (err) {
-    console.error('[KCN Service Worker] Error querying tabs for injection:', err);
+    console.error('[KCN Service Worker] Error querying windows/tabs for injection:', err);
   }
 }
 
@@ -79,7 +86,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     }
     if (Object.keys(updates).length > 0) {
       await chrome.storage.local.set(updates);
-      console.log('[KCN Service Worker] Initialized default settings:', updates);
     }
   } catch (err) {
     console.error('[KCN Service Worker] Failed to initialize default settings:', err);
@@ -93,7 +99,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     console.error('[KCN Service Worker] Initialization error on install:', dbErr);
   }
 
-  // Inject into all already-open tabs
+  // Inject into all already-open normal tabs
   await injectWidgetIntoAllTabs();
 });
 
@@ -115,34 +121,76 @@ chrome.runtime.onStartup.addListener(async () => {
  * Central message router.
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  const { type, payload } = request || {};
+  const { type, payload, target } = request || {};
+
+  // Handshake from offscreen audio document
+  if (type === MESSAGES.OFFSCREEN_READY || type === 'OFFSCREEN_READY') {
+    reminders.handleOffscreenReady();
+    sendResponse(createResponse(true));
+    return false;
+  }
+
+  // Window type validation to ensure widget only mounts in normal tabs
+  if (type === MESSAGES.CHECK_CAN_MOUNT || type === 'CHECK_CAN_MOUNT') {
+    if (!sender.tab || sender.tab.windowId === undefined) {
+      sendResponse(createResponse(true, { shouldMount: false }));
+      return false;
+    }
+    chrome.windows.get(sender.tab.windowId)
+      .then((win) => {
+        const shouldMount = Boolean(win && win.type === 'normal');
+        sendResponse(createResponse(true, { shouldMount }));
+      })
+      .catch((err) => {
+        console.warn('[KCN Service Worker] Window check error for mount:', err);
+        sendResponse(createResponse(true, { shouldMount: false }));
+      });
+    return true;
+  }
+
+  // Audio Test Trigger
+  if (type === MESSAGES.TEST_SOUND || type === 'TEST_SOUND') {
+    reminders.testSound()
+      .then(() => sendResponse(createResponse(true)))
+      .catch((err) => {
+        console.error('[KCN Service Worker] Test sound error:', err);
+        sendResponse(createResponse(false, null, err.message));
+      });
+    return true;
+  }
 
   switch (type) {
     // Todo CRUD operations
     case MESSAGES.TODO_LIST:
       db.getTodos()
         .then((todos) => sendResponse(createResponse(true, todos)))
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to list todos:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.TODO_ADD:
       db.addTodo(payload || {})
         .then(async (newTodo) => {
-          if (newTodo.remindAt) {
+          if (typeof newTodo.remindAt === 'number' && newTodo.remindAt > 0) {
             await reminders.scheduleReminder(newTodo);
           }
           await reminders.refreshBadge();
           sendResponse(createResponse(true, newTodo));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to add todo:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.TODO_UPDATE:
       db.updateTodo(payload?.id, payload?.updates || {})
         .then(async (updatedTodo) => {
           if (payload?.updates?.remindAt !== undefined || payload?.updates?.done !== undefined) {
-            if (updatedTodo.done) {
+            if (updatedTodo.done || typeof updatedTodo.remindAt !== 'number' || updatedTodo.remindAt <= 0) {
               await reminders.clearTodoAlarms(updatedTodo.id);
             } else {
               await reminders.scheduleReminder(updatedTodo);
@@ -152,43 +200,70 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           sendResponse(createResponse(true, updatedTodo));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to update todo:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.TODO_TOGGLE:
       db.toggleTodo(payload?.id)
         .then(async (toggledTodo) => {
-          if (toggledTodo.done) {
+          if (toggledTodo.done || typeof toggledTodo.remindAt !== 'number' || toggledTodo.remindAt <= 0) {
             await reminders.clearTodoAlarms(toggledTodo.id);
-          } else if (toggledTodo.remindAt) {
+          } else {
             await reminders.scheduleReminder(toggledTodo);
           }
           await reminders.refreshBadge();
           sendResponse(createResponse(true, toggledTodo));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to toggle todo:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.TODO_DELETE:
       db.deleteTodo(payload?.id)
         .then(async (deletedTodo) => {
-          await reminders.clearTodoAlarms(payload?.id);
+          try {
+            await reminders.clearTodoAlarms(payload?.id);
+          } catch (alarmErr) {
+            console.error(`[KCN Service Worker] Failed to clear alarms on delete:`, alarmErr);
+          }
           await reminders.refreshBadge();
           sendResponse(createResponse(true, deletedTodo));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to delete todo:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.TODO_CLEAR_DONE:
       db.clearCompletedTodos()
-        .then(async (deletedCount) => {
-          await reminders.refreshBadge();
-          sendResponse(createResponse(true, { count: deletedCount }));
+        .then(async ({ count, deletedTodos = [] }) => {
+          for (const t of deletedTodos) {
+            try {
+              await reminders.clearTodoAlarms(t.id);
+            } catch (alarmErr) {
+              console.error(`[KCN Service Worker] Failed to clear alarms for cleared todo ${t.id}:`, alarmErr);
+            }
+          }
+          try {
+            await reminders.refreshBadge();
+          } catch (badgeErr) {
+            console.error('[KCN Service Worker] Failed to refresh badge on clear completed:', badgeErr);
+          }
+          sendResponse(createResponse(true, { count }));
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
         })
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to clear completed todos:', err.name, err.message);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     // Alarms & Reminders Control
@@ -198,38 +273,56 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const ringingTodos = todos.filter((t) => !t.done && t.ringing);
           sendResponse(createResponse(true, ringingTodos));
         })
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to get alarm status:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.ALARM_STOP:
       reminders.stopAlarm(payload?.id)
         .then(() => sendResponse(createResponse(true)))
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to stop alarm:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.ALARM_SNOOZE:
       reminders.snoozeAlarm(payload?.id)
         .then(() => sendResponse(createResponse(true)))
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to snooze alarm:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.ALARM_DONE:
       reminders.markDoneAlarm(payload?.id)
         .then(() => sendResponse(createResponse(true)))
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to mark done from alarm:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     // Settings
     case MESSAGES.SETTINGS_GET:
       chrome.storage.local.get(null)
         .then((settings) => sendResponse(createResponse(true, settings)))
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to get settings:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.SETTINGS_SET:
       chrome.storage.local.set(payload || {})
         .then(() => sendResponse(createResponse(true, payload)))
-        .catch((err) => sendResponse(createResponse(false, null, err.message)));
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to save settings:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
       return true;
 
     case MESSAGES.BADGE_REFRESH:

@@ -1,3 +1,5 @@
+/* © 2026 Kushal Parajuli */
+
 /* Host container inside the page */
 :host {
   all: initial;
@@ -434,8 +436,33 @@
 }
 
 .kcn-item-done {
-  background-color: var(--kcn-bg-secondary);
-  opacity: 0.75;
+  background-color: rgba(16, 185, 129, 0.08) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+  opacity: 0.55 !important;
+  filter: blur(0.4px);
+  cursor: default;
+}
+
+.kcn-item-done:hover {
+  filter: none;
+  opacity: 0.85 !important;
+}
+
+.kcn-item-done .kcn-todo-checkbox {
+  accent-color: #10B981 !important;
+}
+
+.kcn-item-done .kcn-todo-title {
+  text-decoration: line-through;
+  color: var(--kcn-text-muted);
+  cursor: default;
+  user-select: none;
+}
+
+.kcn-item-done .kcn-bell-btn-item {
+  opacity: 0.25;
+  pointer-events: none;
+  cursor: not-allowed;
 }
 
 /* Checkbox */
@@ -954,11 +981,14 @@
 
 .kcn-custom-time-row {
   display: flex;
+  gap: 6px;
   width: 100%;
 }
 
+.kcn-date-input,
+.kcn-time-input,
 .kcn-dt-input {
-  width: 100%;
+  flex: 1;
   padding: 4px 6px;
   font-size: 11px;
   font-family: inherit;
@@ -969,8 +999,87 @@
   outline: none;
 }
 
+.kcn-date-input:focus,
+.kcn-time-input:focus,
 .kcn-dt-input:focus {
   border-color: var(--kcn-primary);
+}
+
+/* Relative time row: In [number] [unit] [Set] */
+.kcn-relative-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-size: 11px;
+}
+
+.kcn-rel-num {
+  width: 52px;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--kcn-border);
+  border-radius: 4px;
+  background-color: var(--kcn-bg);
+  color: var(--kcn-text);
+  outline: none;
+}
+
+.kcn-rel-select {
+  flex: 1;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--kcn-border);
+  border-radius: 4px;
+  background-color: var(--kcn-bg);
+  color: var(--kcn-text);
+  outline: none;
+}
+
+.kcn-rel-set-btn {
+  background-color: var(--kcn-primary);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.kcn-rel-set-btn:hover {
+  background-color: var(--kcn-primary-hover);
+}
+
+/* Live Preview line */
+.kcn-reminder-live-preview {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--kcn-primary);
+  background: var(--kcn-primary-light);
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-top: 2px;
+  word-break: break-word;
+}
+
+.kcn-reminder-live-preview.kcn-preview-invalid {
+  color: #DC2626;
+  background: #FEE2E2;
+}
+
+/* Footer Copyright */
+.kcn-footer {
+  padding: 6px 14px;
+  font-size: 11px;
+  color: var(--kcn-text-muted);
+  text-align: center;
+  border-top: 1px solid var(--kcn-border);
+  background-color: var(--kcn-bg-secondary);
+  user-select: none;
 }
 
 /* Item Time Chips */

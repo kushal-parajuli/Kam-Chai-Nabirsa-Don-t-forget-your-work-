@@ -1,3 +1,5 @@
+// © 2026 Kushal Parajuli
+
 /**
  * Timing constants for reminders and alarms.
  */
