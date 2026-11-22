@@ -44,10 +44,11 @@ python server.py
 
 ## Usage Guide
 
-- **Floating Widget**: Hover or click the edge pill icon to expand the panel. Press `Esc` or click outside to close. Drag vertically along the edge to reposition.
-- **Tasks & Reminders**: Enter a task description and optional due date/time. Notifications ring with snooze and completion buttons.
+- **Floating Widget**: Click the edge pill icon to expand or collapse the panel. Press `Esc` or click outside to close. Drag vertically along the edge to reposition. The widget mounts strictly in normal Chrome browser tabs (popups, Developer Tools, and app windows are cleanly excluded).
+- **Tasks & Reminders**: Enter a task description and optional due date/time using direct date & time pickers, quick chips (+10m, +1h, Tomorrow 9 AM), or relative time entry ("In [N] [unit]") with a live preview string. Notifications ring with an in-memory synthesized WAV alarm tone, snooze and completion buttons. Completed tasks remain visible under the collapsible "Completed (N)" section with soft green tint, strikethrough, and de-emphasized contrast.
 - **Notes**: Paste text or clipboard images (`Ctrl+V`). Pin critical notes to the top.
 - **Downloader**: Paste a URL, choose MP4 or MP3, and track download progress.
+- **Toolbar Popup**: Toggle widget visibility, reset widget position, or test the alarm sound immediately via the "Test Alarm Sound (3s)" button.
 
 ## Architecture
 
@@ -70,4 +71,4 @@ This tool is designed strictly for local personal use and educational practice. 
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Copyright (c) 2026 Kushal Parajuli. Licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

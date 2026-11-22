@@ -1,5 +1,8 @@
 Kam Chai Nabirsa: Project Specification
 Don't forget your work.
+Author: Kushal Parajuli
+Copyright (c) 2026 Kushal Parajuli. All rights reserved.
+
 A personal Chrome extension (Manifest V3) that combines a floating to-do list with alarm-style reminders, a notes pad for text and images, and a local video/music downloader. Built for practice and personal local use.
 0. Instructions for the AI agent (read first)
 You are the lead developer on this project. The owner is learning, so work like a patient senior mentor.
@@ -86,7 +89,8 @@ Critical design rules
 2.  All calls to the local helper go through the service worker, never from the content script, to avoid page-level CORS, mixed-content and security problems.
 3.  Never rely on setTimeout or in-memory state in the service worker. It is shut down when idle. Use chrome.alarms for timing and re-read state from IndexedDB on every wake-up.
 4.  The widget UI is rendered inside a Shadow DOM so website styles cannot break it and it cannot break websites.
-5.  Sound is played from an offscreen document (chrome.offscreen, reason AUDIO_PLAYBACK) because service workers cannot play audio.
+5.  Sound is played from an offscreen document (chrome.offscreen, reason AUDIO_PLAYBACK) because service workers cannot play audio. Alarm sound is synthesized in-memory as a 16-bit PCM WAV (880 Hz sine wave, 200ms tone / 300ms silence looped) and played via an HTMLAudioElement to avoid Web Audio autoplay suspension.
+6.  The widget mounts strictly in normal Chrome browser tabs (window.type === 'normal'). Content scripts enforce window === window.top, and the service worker verifies window.type before injection or mounting. Popups, Developer Tools, and app windows are cleanly skipped.
 Manifest requirements
 • manifest_version: 3, with name Kam Chai Nabirsa, a clear description, and version 0.1.0.
 • background.service_worker: background/service-worker.js with type: module.
@@ -249,16 +253,16 @@ widgetPosition (edge and vertical offset), widgetOpacity (0.2 to 1, default 0.35
 • Must not shift page layout, steal focus on load, or block clicks on the page except on its own area. Use a very high but sane z-index and all: initial resets inside the Shadow DOM.
 • If the page has a conflicting full-screen element (video player fullscreen), hide the widget.
 8.2 Todo tab
-• Input to add a todo (Enter to submit). Optional reminder picker (date and time input).
-• List shows open todos first, then completed todos (collapsed section, count shown).
-• Tick a checkbox to complete (strikethrough, moves down). Untick to restore.
+• Input to add a todo (Enter to submit). Reminder row supports direct Date and Time inputs (<input type="date"> and <input type="time">), quick chips (+10m, +1h, Tomorrow 9 AM), relative entry ("In [number] [unit]"), and live preview ("Will remind: Fri 21 Nov, 5:30 PM (in 2h 15m)") with minimum 30-second advance enforcement.
+• List shows open todos first, then completed todos under an expandable "Completed (N)" collapsible section. Completed tasks remain visible in the section, styled with a soft green tint, green checkmark, strikethrough, 0.55 opacity, 0.4px blur, and are non-editable (no edit button, no double-click, bell disabled).
+• Tick a checkbox to complete (moves to Completed section). Untick to restore to open tasks.
 • Delete button per item with a brief undo toast (5 seconds).
-• Edit title by double-click or an edit button.
-• Items with a reminder show a small clock label (for example Today 5:30 PM), red when overdue.
+• Edit title by double-click or an edit button (open tasks only).
+• Items with a reminder show a countdown clock chip ("in 12m", "in 2h 15m", "in 1d 3h"), amber when <5 minutes, and red "Overdue" when past due, with an exact timestamp tooltip. The chips refresh automatically every 30 seconds while the panel is open.
 • Empty state with a friendly message.
-• A Clear completed button.
+• A Clear completed button with clean transaction handling and error reporting.
 8.3 Reminders (alarm behaviour)
-When a todo has remindAt:
+When a todo has a valid remindAt (typeof remindAt === 'number' && remindAt > 0):
 1.  Timing & Constants (shared/constants.js):
     ◦ PRE_ALERT_MIN = 5, RING_SECONDS = 60, REPEAT_MINUTES = 5, MAX_REPEATS = 10, SNOOZE_MINUTES = 5, MIN_LEAD_SECONDS = 30.
 2.  Scheduling:
@@ -268,7 +272,7 @@ When a todo has remindAt:
     ◦ pre:<id> fires: marks preReminded: true, broadcasts PRE_ALERT to all tabs (shows toast "<title> in 5 min" and indicator dot on pill), and shows a quiet, non-sticky system notification.
 4.  Alarm at exact time:
     ◦ todo:<id> fires: sets ringing: true, increments ringCount, sets lastRingAt, schedules stop:<id> (60s) and repeat:<id> (5 min).
-    ◦ Offscreen document (offscreen/offscreen.html + offscreen.js) synthesizes an 880 Hz beep pattern (200ms on / 300ms off) via the Web Audio API without audio files.
+    ◦ Offscreen document (offscreen/offscreen.html + offscreen.js) synthesizes an 880 Hz beep pattern (200ms on / 300ms off) into a 16-bit PCM WAV played through an HTMLAudioElement with loop=true to bypass Web Audio autoplay restrictions.
     ◦ Broadcasts ALARM_RINGING to all tabs: widget auto-opens, pins itself open, pulses red, and displays an alarm banner with Stop, Snooze 5 min, and Mark done buttons.
     ◦ Creates a persistent system notification with requireInteraction: true and buttons Snooze 5 min / Mark done.
     ◦ Sets toolbar badge text to the number of ringing/overdue todos with a red background.
