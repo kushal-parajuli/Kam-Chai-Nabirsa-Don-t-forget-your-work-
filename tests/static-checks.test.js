@@ -54,8 +54,8 @@ describe('Static Checks & Manifest Verification', () => {
     assert.ok(cs, 'At least one content script config must exist');
     assert.deepEqual(
       cs.js,
-      ['content/widget-css.js', 'content/tabs/todo.js', 'content/widget.js'],
-      'Content scripts must be loaded in the exact sequence: widget-css.js, todo.js, widget.js'
+      ['content/widget-css.js', 'content/tabs/todo.js', 'content/tabs/notes.js', 'content/widget.js'],
+      'Content scripts must be loaded in the exact sequence: widget-css.js, todo.js, notes.js, widget.js'
     );
 
     for (const scriptPath of cs.js) {
@@ -81,6 +81,7 @@ describe('Static Checks & Manifest Verification', () => {
     const esmFiles = [
       'shared/constants.js',
       'shared/messages.js',
+      'shared/notes-export.js',
       'shared/utils.js',
       'background/db.js',
       'background/reminders.js',
@@ -105,7 +106,7 @@ describe('Static Checks & Manifest Verification', () => {
         if (rawNames) {
           const names = rawNames.replace(/[{}]/g, '').split(',').map((s) => s.trim().split(/\s+as\s+/)[0]).filter(Boolean);
           for (const n of names) {
-            const expNamed = new RegExp('export\\s+(const|function|let|var|class)\\s+' + n + '\\b');
+            const expNamed = new RegExp('export\\s+(async\\s+)?(const|function|let|var|class)\\s+' + n + '\\b');
             const expList = new RegExp('export\\s*\\{[^}]*\\b' + n + '\\b[^}]*\\}');
             assert.ok(
               expNamed.test(targetContent) || expList.test(targetContent),
