@@ -38,7 +38,11 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/widget.js"],
+      "js": [
+        "content/widget-css.js",
+        "content/tabs/todo.js",
+        "content/widget.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false,
       "match_about_blank": true
@@ -47,9 +51,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "icons/*",
-        "content/*",
-        "shared/*"
+        "icons/*"
       ],
       "matches": ["<all_urls>"]
     }

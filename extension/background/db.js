@@ -1,10 +1,13 @@
+// © 2026 Kushal Parajuli
+
 /**
- * IndexedDB wrapper for Kam Chai Nabirsa (database: kcn-db, version: 1).
+ * IndexedDB wrapper for Kam Chai Nabirsa (database: kcn-db, version: 3).
  * Exposes promise-based functions; never leaks raw transactions or database instances.
+ * Booleans are not indexed in IndexedDB; queries filter in JavaScript.
  */
 
 const DB_NAME = 'kcn-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbInstance = null;
 
@@ -31,9 +34,13 @@ export function openDB() {
         todoStore.createIndex('remindAt', 'remindAt', { unique: false });
       } else {
         todoStore = tx.objectStore('todos');
-        // Remove 'done' index if present (booleans are not valid IndexedDB keys)
+        // Delete 'done' boolean index if previously created in older DB versions
         if (todoStore.indexNames.contains('done')) {
-          todoStore.deleteIndex('done');
+          try {
+            todoStore.deleteIndex('done');
+          } catch (err) {
+            console.warn('[KCN DB] Failed to delete legacy done index:', err);
+          }
         }
         if (!todoStore.indexNames.contains('remindAt')) {
           todoStore.createIndex('remindAt', 'remindAt', { unique: false });
@@ -52,9 +59,14 @@ export function openDB() {
       }
     };
 
+    request.onblocked = () => {
+      console.warn('[KCN DB] Database open blocked: please close other tabs running older database version.');
+    };
+
     request.onsuccess = () => {
       dbInstance = request.result;
       dbInstance.onversionchange = () => {
+        console.warn('[KCN DB] Database version change detected, closing connection.');
         dbInstance.close();
         dbInstance = null;
       };
@@ -62,6 +74,7 @@ export function openDB() {
     };
 
     request.onerror = () => {
+      console.error('[KCN DB] Failed to open IndexedDB:', request.error);
       reject(new Error(`Failed to open IndexedDB: ${request.error?.message || 'Unknown error'}`));
     };
   });
@@ -85,7 +98,10 @@ export async function getTodos() {
       resolve(list);
     };
 
-    request.onerror = () => reject(new Error(`Failed to get todos: ${request.error?.message}`));
+    request.onerror = () => {
+      console.error('[KCN DB] Failed to get todos:', request.error);
+      reject(new Error(`Failed to get todos: ${request.error?.message}`));
+    };
   });
 }
 
@@ -104,13 +120,15 @@ export async function addTodo({ title, remindAt = null }) {
   const trimmedTitle = title.trim().slice(0, 200);
   const now = Date.now();
 
+  const validRemindAt = (typeof remindAt === 'number' && !isNaN(remindAt) && remindAt > 0) ? remindAt : null;
+
   const newTodo = {
     id: crypto.randomUUID(),
     title: trimmedTitle,
     done: false,
     createdAt: now,
     updatedAt: now,
-    remindAt: typeof remindAt === 'number' ? remindAt : null,
+    remindAt: validRemindAt,
     reminded: false,
     snoozedUntil: null,
     preReminded: false,
@@ -126,7 +144,10 @@ export async function addTodo({ title, remindAt = null }) {
     const request = store.add(newTodo);
 
     request.onsuccess = () => resolve(newTodo);
-    request.onerror = () => reject(new Error(`Failed to add todo: ${request.error?.message}`));
+    request.onerror = () => {
+      console.error('[KCN DB] Failed to add todo:', request.error);
+      reject(new Error(`Failed to add todo: ${request.error?.message}`));
+    };
   });
 }
 
@@ -167,7 +188,7 @@ export async function updateTodo(id, updates = {}) {
       }
 
       if (updates.remindAt !== undefined) {
-        existing.remindAt = updates.remindAt;
+        existing.remindAt = (typeof updates.remindAt === 'number' && !isNaN(updates.remindAt) && updates.remindAt > 0) ? updates.remindAt : null;
       }
 
       if (updates.reminded !== undefined) {
@@ -175,7 +196,7 @@ export async function updateTodo(id, updates = {}) {
       }
 
       if (updates.snoozedUntil !== undefined) {
-        existing.snoozedUntil = updates.snoozedUntil;
+        existing.snoozedUntil = (typeof updates.snoozedUntil === 'number' && !isNaN(updates.snoozedUntil) && updates.snoozedUntil > 0) ? updates.snoozedUntil : null;
       }
 
       if (updates.preReminded !== undefined) {
@@ -198,10 +219,16 @@ export async function updateTodo(id, updates = {}) {
 
       const putReq = store.put(existing);
       putReq.onsuccess = () => resolve(existing);
-      putReq.onerror = () => reject(new Error(`Failed to update todo: ${putReq.error?.message}`));
+      putReq.onerror = () => {
+        console.error('[KCN DB] Failed to save updated todo:', putReq.error);
+        reject(new Error(`Failed to update todo: ${putReq.error?.message}`));
+      };
     };
 
-    getReq.onerror = () => reject(new Error(`Failed to find todo: ${getReq.error?.message}`));
+    getReq.onerror = () => {
+      console.error('[KCN DB] Failed to retrieve todo for update:', getReq.error);
+      reject(new Error(`Failed to find todo: ${getReq.error?.message}`));
+    };
   });
 }
 
@@ -233,10 +260,16 @@ export async function toggleTodo(id) {
 
       const putReq = store.put(existing);
       putReq.onsuccess = () => resolve(existing);
-      putReq.onerror = () => reject(new Error(`Failed to toggle todo: ${putReq.error?.message}`));
+      putReq.onerror = () => {
+        console.error('[KCN DB] Failed to save toggled todo:', putReq.error);
+        reject(new Error(`Failed to toggle todo: ${putReq.error?.message}`));
+      };
     };
 
-    getReq.onerror = () => reject(new Error(`Failed to retrieve todo for toggle: ${getReq.error?.message}`));
+    getReq.onerror = () => {
+      console.error('[KCN DB] Failed to retrieve todo for toggle:', getReq.error);
+      reject(new Error(`Failed to retrieve todo for toggle: ${getReq.error?.message}`));
+    };
   });
 }
 
@@ -265,41 +298,59 @@ export async function deleteTodo(id) {
 
       const delReq = store.delete(id);
       delReq.onsuccess = () => resolve(existing);
-      delReq.onerror = () => reject(new Error(`Failed to delete todo: ${delReq.error?.message}`));
+      delReq.onerror = () => {
+        console.error('[KCN DB] Failed to delete todo:', delReq.error);
+        reject(new Error(`Failed to delete todo: ${delReq.error?.message}`));
+      };
     };
 
-    getReq.onerror = () => reject(new Error(`Failed to locate todo for deletion: ${getReq.error?.message}`));
+    getReq.onerror = () => {
+      console.error('[KCN DB] Failed to locate todo for deletion:', getReq.error);
+      reject(new Error(`Failed to locate todo for deletion: ${getReq.error?.message}`));
+    };
   });
 }
 
 /**
- * Deletes all completed todos from the database.
+ * Deletes all completed todos from the database in a single readwrite transaction.
  * Uses in-memory filtering because booleans cannot be indexed in IndexedDB.
- * @returns {Promise<number>} Count of cleared todos.
+ * Resolves with the count and array of deleted todos for cleanup.
+ * @returns {Promise<{ count: number, deletedTodos: Array<object> }>}
  */
 export async function clearCompletedTodos() {
   const db = await openDB();
   return new Promise((resolve, reject) => {
+    let completedTodos = [];
     const tx = db.transaction('todos', 'readwrite');
     const store = tx.objectStore('todos');
     const request = store.getAll();
 
     request.onsuccess = () => {
       const allTodos = request.result || [];
-      const completedTodos = allTodos.filter((t) => Boolean(t.done));
+      completedTodos = allTodos.filter((t) => Boolean(t.done));
       if (completedTodos.length === 0) {
-        resolve(0);
         return;
       }
 
       for (const todo of completedTodos) {
         store.delete(todo.id);
       }
-
-      tx.oncomplete = () => resolve(completedTodos.length);
-      tx.onerror = () => reject(new Error(`Failed while clearing completed todos: ${tx.error?.message}`));
     };
 
-    request.onerror = () => reject(new Error(`Failed to query todos for clearing: ${request.error?.message}`));
+    tx.oncomplete = () => {
+      resolve({ count: completedTodos.length, deletedTodos: completedTodos });
+    };
+
+    tx.onerror = () => {
+      const errMsg = tx.error?.message || 'Transaction error';
+      console.error('[KCN DB] Transaction error clearing completed todos:', tx.error);
+      reject(new Error(`Transaction failed: ${errMsg}`));
+    };
+
+    request.onerror = () => {
+      const errMsg = request.error?.message || 'Query error';
+      console.error('[KCN DB] Failed to query todos for clearing:', request.error);
+      reject(new Error(`Failed to query todos: ${errMsg}`));
+    };
   });
 }
