@@ -290,15 +290,24 @@ When a todo has a valid remindAt (typeof remindAt === 'number' && remindAt > 0):
 8.  Validation:
     ◦ UI validates reminders to be at least 30 seconds into the future.
 8.4 Notes tab
-• A text area and a drop/paste zone. Pressing Ctrl+V inside the zone handles:
-    ◦ plain text: saved as a text note,
-    ◦ an image from the clipboard: saved as an image note (Blob in IndexedDB).
-• Also support dragging an image file onto the zone and a file picker button.
-• Notes render as a list of cards, newest first: text cards (copy button) and image cards with thumbnail previews (via URL.createObjectURL, revoked when removed), plus Copy image, Download image and Delete.
-• Pin option so important notes stay on top.
-• Limit a single image to 10 MB with a friendly error message. Search box filters text notes.
-• The brief says notes are saved temporarily: add a setting Auto-delete notes older than N days (default Off) and a Clear all notes button with a confirmation.
-• Reading the clipboard silently is not allowed. Only handle explicit user paste events.
+• A text area and a drop/paste zone. Pressing Ctrl+V inside the zone or textarea handles:
+    ◦ plain text: inserted into the textarea or saved as a text note (max 20,000 characters).
+    ◦ an image from the clipboard: saved automatically as an image note (Blob in IndexedDB).
+• Also support dragging an image file onto the zone and a "Choose image" file picker button.
+• Allowed image types: PNG, JPEG, GIF, WEBP (SVG is strictly rejected). Max 10 MB per image with a friendly error.
+• Reading the clipboard silently is not allowed. Only handle explicit user paste/drop events.
+• In-widget thumbnail generation: canvas scales images to max 320 px on the longest side (JPEG/WEBP quality 0.8) and sends the thumbnail data URL with the note.
+• Base64 messaging rule: Chrome runtime messaging serializes to JSON, so binary Blobs and ArrayBuffers do not survive message passing. The widget converts images to base64 data URLs (via FileReader.readAsDataURL) before sending; the service worker converts them back to Blobs (via dataUrlToBlob) to store in IndexedDB. NOTE_LIST returns notes without Blobs (only thumbnail data URLs). Full images are fetched on demand via NOTE_GET_FULL.
+• Notes render as a list of cards, pinned first, then newest first:
+    ◦ Text cards: text content (rendered via textContent only), timestamp, Copy text button, Edit button (inline textarea; Ctrl+Enter saves, Esc cancels), Download .txt, Pin, and Delete (with 5-second undo toast).
+    ◦ Image cards: thumbnail preview, file name and size, Copy image button (navigator.clipboard.write with ClipboardItem converting to PNG; friendly error if page refuses), Download image, Pin, and Delete (5-second undo toast).
+• Live search box filters text notes case-insensitively.
+• "Clear all notes" button displays a confirmation dialog with an "Also delete pinned notes" checkbox.
+• Exporting notes (.txt downloads):
+    ◦ Single text note download: saved as note-[slug]-YYYY-MM-DD-HHmm.txt or note-YYYY-MM-DD-HHmm.txt with UTF-8 Windows line endings (\r\n).
+    ◦ Master notes export: "Download all notes (.txt)" button in the tab header produces kam-chai-nabirsa-notes-YYYY-MM-DD.txt with header "Kam Chai Nabirsa - notes export - © 2026 Kushal Parajuli\r\n", the export date, and 40-dash separators. Images are represented as placeholder lines [image note: <fileName or 'pasted image'>, <date>] because raw images cannot be embedded in a plain text file. If no text notes exist, shows a friendly message.
+    ◦ Image download: fetches full image via NOTE_GET_FULL and downloads as note-image-YYYY-MM-DD-HHmm.<ext>.
+    ◦ All downloads implemented via temporary <a download> tag and URL.revokeObjectURL without requiring extra permissions. Pure export formatting logic lives in shared/notes-export.js.
 8.5 Downloader tab
 • Link input, a Video (mp4) or Audio (mp3) toggle, and a Download button.
 • Status line: Helper online (green) or Helper offline (red, with a short how-to-start message). Ping the helper when the panel opens, then every 10 seconds while the tab is visible.
@@ -316,8 +325,10 @@ Type
 Purpose
 TODO_LIST, TODO_ADD, TODO_UPDATE, TODO_DELETE, TODO_TOGGLE, TODO_CLEAR_DONE
 Todo CRUD
-NOTE_LIST, NOTE_ADD, NOTE_DELETE, NOTE_PIN, NOTES_CLEAR
-Notes CRUD
+NOTE_LIST, NOTE_ADD, NOTE_UPDATE, NOTE_DELETE, NOTE_PIN, NOTES_CLEAR, NOTE_GET_FULL
+Notes CRUD and full image fetching (NOTE_LIST returns notes without Blobs; Blobs reconstructed from data URLs)
+NOTES_CHANGED, TODOS_CHANGED
+Broadcast events notifying all open tabs to synchronize
 HELPER_PING
 Check helper availability
 DOWNLOAD_START, DOWNLOAD_STATUS, DOWNLOAD_LIST, DOWNLOAD_CLEAR
