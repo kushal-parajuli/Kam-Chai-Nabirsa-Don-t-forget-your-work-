@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const toggle = document.getElementById('widget-toggle');
   const resetBtn = document.getElementById('reset-pos-btn');
   const testSoundBtn = document.getElementById('test-sound-btn');
+  const resetDataBtn = document.getElementById('reset-data-btn');
 
   // Load toggle state from storage (default: true)
   try {
@@ -62,6 +63,38 @@ document.addEventListener('DOMContentLoaded', async () => {
       }, 3200);
     } catch (err) {
       console.error('Failed to trigger test sound:', err);
+    }
+  });
+
+  // Handle reset local data (safety net)
+  resetDataBtn?.addEventListener('click', async () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to reset all local data?\n\nThis will permanently delete all stored todos and notes, reset alarms, and recreate a clean database.'
+    );
+    if (!confirmed) return;
+
+    try {
+      const original = resetDataBtn.textContent;
+      resetDataBtn.textContent = 'Resetting...';
+      resetDataBtn.disabled = true;
+
+      chrome.runtime.sendMessage({ type: 'DB_RESET' }, (res) => {
+        if (chrome.runtime.lastError || (res && !res.ok)) {
+          alert('Failed to reset data: ' + ((res && res.error) || chrome.runtime.lastError?.message));
+          resetDataBtn.textContent = original;
+          resetDataBtn.disabled = false;
+        } else {
+          resetDataBtn.textContent = 'Data Reset!';
+          setTimeout(() => {
+            resetDataBtn.textContent = original;
+            resetDataBtn.disabled = false;
+          }, 1500);
+        }
+      });
+    } catch (err) {
+      console.error('Failed to reset local data:', err);
+      alert('Failed to reset data: ' + err.message);
+      resetDataBtn.disabled = false;
     }
   });
 });

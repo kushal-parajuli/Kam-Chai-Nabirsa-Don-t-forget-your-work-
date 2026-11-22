@@ -55,44 +55,55 @@ export function openDB() {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      const tx = event.target.transaction;
+      try {
+        const db = event.target.result;
+        const tx = event.target.transaction;
 
-      // Object store: todos (primary key: id)
-      let todoStore;
-      if (!db.objectStoreNames.contains('todos')) {
-        todoStore = db.createObjectStore('todos', { keyPath: 'id' });
-      } else {
-        todoStore = tx.objectStore('todos');
-      }
+        // Object store: todos (primary key: id)
+        let todoStore;
+        if (!db.objectStoreNames.contains('todos')) {
+          todoStore = db.createObjectStore('todos', { keyPath: 'id' });
+        } else {
+          todoStore = tx.objectStore('todos');
+        }
 
-      // Safely delete legacy or unused indexes if present (guarded with contains)
-      if (todoStore && todoStore.indexNames) {
-        if (todoStore.indexNames.contains('done')) {
-          try {
-            todoStore.deleteIndex('done');
-          } catch (err) {
-            console.warn('[KCN DB] Failed to delete legacy done index:', err);
+        // Safely delete legacy or unused indexes if present (guarded with contains)
+        if (todoStore && todoStore.indexNames) {
+          if (todoStore.indexNames.contains('done')) {
+            try {
+              todoStore.deleteIndex('done');
+            } catch (err) {
+              console.warn('[KCN DB] Failed to delete legacy done index:', err);
+            }
+          }
+          if (todoStore.indexNames.contains('remindAt')) {
+            try {
+              todoStore.deleteIndex('remindAt');
+            } catch (err) {
+              console.warn('[KCN DB] Failed to delete legacy remindAt index:', err);
+            }
           }
         }
-        if (todoStore.indexNames.contains('remindAt')) {
-          try {
-            todoStore.deleteIndex('remindAt');
-          } catch (err) {
-            console.warn('[KCN DB] Failed to delete legacy remindAt index:', err);
+
+        // Object store: notes (created now for schema completeness)
+        let noteStore;
+        if (!db.objectStoreNames.contains('notes')) {
+          noteStore = db.createObjectStore('notes', { keyPath: 'id' });
+          noteStore.createIndex('createdAt', 'createdAt', { unique: false });
+        } else {
+          noteStore = tx.objectStore('notes');
+          if (!noteStore.indexNames.contains('createdAt')) {
+            noteStore.createIndex('createdAt', 'createdAt', { unique: false });
           }
         }
-      }
 
-      // Object store: notes (created now for schema completeness)
-      if (!db.objectStoreNames.contains('notes')) {
-        const noteStore = db.createObjectStore('notes', { keyPath: 'id' });
-        noteStore.createIndex('createdAt', 'createdAt', { unique: false });
-      }
-
-      // Object store: downloads (created now for schema completeness)
-      if (!db.objectStoreNames.contains('downloads')) {
-        db.createObjectStore('downloads', { keyPath: 'id' });
+        // Object store: downloads (created now for schema completeness)
+        if (!db.objectStoreNames.contains('downloads')) {
+          db.createObjectStore('downloads', { keyPath: 'id' });
+        }
+      } catch (upgradeErr) {
+        console.error('[KCN DB] Error during onupgradeneeded:', upgradeErr);
+        // Let transaction abort handle the error cleanly
       }
     };
 
@@ -111,6 +122,10 @@ export function openDB() {
         console.warn('[KCN DB] Database version change detected, closing connection immediately.');
         closeDB();
       };
+      dbInstance.onclose = () => {
+        console.warn('[KCN DB] Database connection closed unexpectedly.');
+        closeDB();
+      };
       resolve(dbInstance);
     };
 
@@ -127,6 +142,49 @@ export function openDB() {
   });
 
   return dbOpenPromise;
+}
+
+/**
+ * Completely resets and recreates the database.
+ * Deletes kcn-db and opens a clean new database.
+ * @returns {Promise<void>}
+ */
+export async function resetDB() {
+  closeDB();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error('Database delete timed out after 5000ms. Please close other open tabs.'));
+      }
+    }, 5000);
+
+    const delReq = indexedDB.deleteDatabase(DB_NAME);
+
+    delReq.onblocked = () => {
+      console.warn('[KCN DB] Database delete blocked: waiting for other connections to close...');
+    };
+
+    delReq.onsuccess = async () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        await openDB();
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    delReq.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(`Failed to delete database: ${delReq.error?.message || 'Unknown error'}`));
+    };
+  });
 }
 
 /**
@@ -151,6 +209,10 @@ export async function getTodos() {
     request.onerror = () => {
       console.error('[KCN DB] Failed to get todos:', request.error);
       reject(new Error(`Failed to get todos: ${request.error?.message}`));
+    };
+
+    tx.onerror = () => {
+      reject(new Error(`Transaction failed while getting todos: ${tx.error?.message}`));
     };
   });
 }
@@ -191,12 +253,15 @@ export async function addTodo({ title, remindAt = null }) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('todos', 'readwrite');
     const store = tx.objectStore('todos');
-    const request = store.add(newTodo);
+    store.add(newTodo);
 
-    request.onsuccess = () => resolve(newTodo);
-    request.onerror = () => {
-      console.error('[KCN DB] Failed to add todo:', request.error);
-      reject(new Error(`Failed to add todo: ${request.error?.message}`));
+    tx.oncomplete = () => resolve(newTodo);
+    tx.onerror = () => {
+      console.error('[KCN DB] Failed to add todo:', tx.error);
+      reject(new Error(`Failed to add todo: ${tx.error?.message}`));
+    };
+    tx.onabort = () => {
+      reject(new Error(`Add todo transaction aborted: ${tx.error?.message || 'Aborted'}`));
     };
   });
 }
@@ -214,6 +279,7 @@ export async function updateTodo(id, updates = {}) {
 
   const db = await openDB();
   return new Promise((resolve, reject) => {
+    let updatedRecord = null;
     const tx = db.transaction('todos', 'readwrite');
     const store = tx.objectStore('todos');
     const getReq = store.get(id);
@@ -266,18 +332,27 @@ export async function updateTodo(id, updates = {}) {
       }
 
       existing.updatedAt = Date.now();
+      updatedRecord = existing;
 
-      const putReq = store.put(existing);
-      putReq.onsuccess = () => resolve(existing);
-      putReq.onerror = () => {
-        console.error('[KCN DB] Failed to save updated todo:', putReq.error);
-        reject(new Error(`Failed to update todo: ${putReq.error?.message}`));
-      };
+      store.put(existing);
     };
 
     getReq.onerror = () => {
       console.error('[KCN DB] Failed to retrieve todo for update:', getReq.error);
       reject(new Error(`Failed to find todo: ${getReq.error?.message}`));
+    };
+
+    tx.oncomplete = () => {
+      if (updatedRecord) {
+        resolve(updatedRecord);
+      }
+    };
+    tx.onerror = () => {
+      console.error('[KCN DB] Failed to save updated todo:', tx.error);
+      reject(new Error(`Failed to update todo: ${tx.error?.message}`));
+    };
+    tx.onabort = () => {
+      reject(new Error(`Update todo transaction aborted: ${tx.error?.message || 'Aborted'}`));
     };
   });
 }
@@ -294,6 +369,7 @@ export async function toggleTodo(id) {
 
   const db = await openDB();
   return new Promise((resolve, reject) => {
+    let toggledRecord = null;
     const tx = db.transaction('todos', 'readwrite');
     const store = tx.objectStore('todos');
     const getReq = store.get(id);
@@ -307,18 +383,27 @@ export async function toggleTodo(id) {
 
       existing.done = !existing.done;
       existing.updatedAt = Date.now();
+      toggledRecord = existing;
 
-      const putReq = store.put(existing);
-      putReq.onsuccess = () => resolve(existing);
-      putReq.onerror = () => {
-        console.error('[KCN DB] Failed to save toggled todo:', putReq.error);
-        reject(new Error(`Failed to toggle todo: ${putReq.error?.message}`));
-      };
+      store.put(existing);
     };
 
     getReq.onerror = () => {
       console.error('[KCN DB] Failed to retrieve todo for toggle:', getReq.error);
       reject(new Error(`Failed to retrieve todo for toggle: ${getReq.error?.message}`));
+    };
+
+    tx.oncomplete = () => {
+      if (toggledRecord) {
+        resolve(toggledRecord);
+      }
+    };
+    tx.onerror = () => {
+      console.error('[KCN DB] Failed to save toggled todo:', tx.error);
+      reject(new Error(`Failed to toggle todo: ${tx.error?.message}`));
+    };
+    tx.onabort = () => {
+      reject(new Error(`Toggle todo transaction aborted: ${tx.error?.message || 'Aborted'}`));
     };
   });
 }
@@ -335,6 +420,7 @@ export async function deleteTodo(id) {
 
   const db = await openDB();
   return new Promise((resolve, reject) => {
+    let deletedRecord = null;
     const tx = db.transaction('todos', 'readwrite');
     const store = tx.objectStore('todos');
     const getReq = store.get(id);
@@ -346,17 +432,26 @@ export async function deleteTodo(id) {
         return;
       }
 
-      const delReq = store.delete(id);
-      delReq.onsuccess = () => resolve(existing);
-      delReq.onerror = () => {
-        console.error('[KCN DB] Failed to delete todo:', delReq.error);
-        reject(new Error(`Failed to delete todo: ${delReq.error?.message}`));
-      };
+      deletedRecord = existing;
+      store.delete(id);
     };
 
     getReq.onerror = () => {
       console.error('[KCN DB] Failed to locate todo for deletion:', getReq.error);
       reject(new Error(`Failed to locate todo for deletion: ${getReq.error?.message}`));
+    };
+
+    tx.oncomplete = () => {
+      if (deletedRecord) {
+        resolve(deletedRecord);
+      }
+    };
+    tx.onerror = () => {
+      console.error('[KCN DB] Failed to delete todo:', tx.error);
+      reject(new Error(`Failed to delete todo: ${tx.error?.message}`));
+    };
+    tx.onabort = () => {
+      reject(new Error(`Delete todo transaction aborted: ${tx.error?.message || 'Aborted'}`));
     };
   });
 }

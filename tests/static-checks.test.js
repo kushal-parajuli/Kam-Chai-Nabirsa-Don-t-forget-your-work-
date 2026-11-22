@@ -95,9 +95,24 @@ describe('Static Checks & Manifest Verification', () => {
       let match;
 
       while ((match = importRegex.exec(content)) !== null) {
+        const rawNames = match[1];
+        const defaultName = match[2];
         const importTarget = match[3];
         const targetResolved = path.resolve(path.dirname(full), importTarget);
         assert.ok(fs.existsSync(targetResolved), `Import target ${importTarget} in ${rel} must exist at ${targetResolved}`);
+
+        const targetContent = fs.readFileSync(targetResolved, 'utf8');
+        if (rawNames) {
+          const names = rawNames.replace(/[{}]/g, '').split(',').map((s) => s.trim().split(/\s+as\s+/)[0]).filter(Boolean);
+          for (const n of names) {
+            const expNamed = new RegExp('export\\s+(const|function|let|var|class)\\s+' + n + '\\b');
+            const expList = new RegExp('export\\s*\\{[^}]*\\b' + n + '\\b[^}]*\\}');
+            assert.ok(
+              expNamed.test(targetContent) || expList.test(targetContent),
+              `Export "${n}" must exist in ${importTarget} (imported in ${rel})`
+            );
+          }
+        }
       }
     }
   });

@@ -241,4 +241,25 @@ describe('Service Worker End-To-End & Upgrade Tests', () => {
     assert.ok(finalListing.data.some((t) => t.id === addRes.data.id));
   });
 
+  test('DB_RESET message resets database, clears all items, and restores fresh store', async () => {
+    // Add a todo first
+    const addRes = await dispatchMessage({
+      type: 'TODO_ADD',
+      payload: { title: 'To be wiped' }
+    });
+    assert.equal(addRes.ok, true);
+
+    const listBefore = await dispatchMessage({ type: 'TODO_LIST' });
+    assert.ok(listBefore.data.length >= 1);
+
+    // Call DB_RESET
+    const resetRes = await dispatchMessage({ type: 'DB_RESET' });
+    assert.equal(resetRes.ok, true);
+
+    // Verify DB is fresh and empty
+    const listAfter = await dispatchMessage({ type: 'TODO_LIST' });
+    assert.equal(listAfter.ok, true);
+    assert.equal(listAfter.data.length, 0);
+  });
+
 });

@@ -145,6 +145,15 @@
     .btn-secondary:hover {
       background: rgba(0, 0, 0, 0.05);
     }
+    .btn-danger {
+      background: transparent;
+      color: #EF4444;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.08);
+      border-color: #EF4444;
+    }
     .btn-group {
       display: flex;
       flex-direction: column;
@@ -183,6 +192,7 @@
   <div class="btn-group">
     <button id="reset-pos-btn" class="btn btn-secondary">Reset Widget Position</button>
     <button id="test-sound-btn" class="btn btn-secondary">Test Alarm Sound (3s)</button>
+    <button id="reset-data-btn" class="btn btn-danger">Reset Local Data</button>
   </div>
 
   <div class="footer-copy">© 2026 Kushal Parajuli</div>

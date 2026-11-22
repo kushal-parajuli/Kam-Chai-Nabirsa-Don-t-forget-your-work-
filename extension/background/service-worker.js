@@ -273,6 +273,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       return true;
 
+    case MESSAGES.DB_RESET:
+    case 'DB_RESET':
+      db.resetDB()
+        .then(async () => {
+          try {
+            await reminders.refreshBadge();
+          } catch (badgeErr) {
+            console.error('[KCN Service Worker] Failed to refresh badge after DB reset:', badgeErr);
+          }
+          sendResponse(createResponse(true));
+          broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
+        })
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to reset database:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
     // Alarms & Reminders Control
     case MESSAGES.ALARM_STATUS:
       db.getTodos()

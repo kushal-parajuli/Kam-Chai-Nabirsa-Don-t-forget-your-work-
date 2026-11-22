@@ -30,8 +30,9 @@ export const MESSAGES = {
   OFFSCREEN_READY: 'OFFSCREEN_READY',
   TEST_SOUND: 'TEST_SOUND',
 
-  // Window mount check
+  // Window mount check & DB recovery
   CHECK_CAN_MOUNT: 'CHECK_CAN_MOUNT',
+  DB_RESET: 'DB_RESET',
 
   // Notes operations
   NOTE_LIST: 'NOTE_LIST',
