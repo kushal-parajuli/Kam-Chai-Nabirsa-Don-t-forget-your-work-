@@ -1,3 +1,4 @@
+<!-- © 2026 Kushal Parajuli -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -131,6 +132,7 @@
       cursor: pointer;
       text-align: center;
       transition: background-color 0.15s ease;
+      box-sizing: border-box;
     }
     .btn:hover {
       background-color: var(--primary-hover);
@@ -142,6 +144,18 @@
     }
     .btn-secondary:hover {
       background: rgba(0, 0, 0, 0.05);
+    }
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .footer-copy {
+      margin-top: 14px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      user-select: none;
     }
   </style>
 </head>
@@ -166,7 +180,12 @@
     <p class="hint">The floating widget is active on all web pages. Click the pill icon to open the panel.</p>
   </div>
 
-  <button id="reset-pos-btn" class="btn btn-secondary">Reset Widget Position</button>
+  <div class="btn-group">
+    <button id="reset-pos-btn" class="btn btn-secondary">Reset Widget Position</button>
+    <button id="test-sound-btn" class="btn btn-secondary">Test Alarm Sound (3s)</button>
+  </div>
+
+  <div class="footer-copy">© 2026 Kushal Parajuli</div>
 
   <script src="popup.js"></script>
 </body>

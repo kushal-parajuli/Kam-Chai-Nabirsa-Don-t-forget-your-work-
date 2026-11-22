@@ -1,24 +1,63 @@
+// © 2026 Kushal Parajuli
+
 import { MESSAGES } from '../shared/messages.js';
 import { PRE_ALERT_MIN, RING_SECONDS, REPEAT_MINUTES, MAX_REPEATS, SNOOZE_MINUTES, MIN_LEAD_SECONDS } from '../shared/constants.js';
 import * as db from './db.js';
 
 const OFFSCREEN_PATH = 'offscreen/offscreen.html';
 
+let offscreenReadyResolver = null;
+let testSoundTimer = null;
+
 /**
- * Ensures the offscreen audio playback document exists.
+ * Predicate to strictly verify whether a todo has a valid future/past reminder epoch.
+ * In JS, `null <= Date.now()` evaluates to `0 <= Date.now()` (true), so a strict check is required.
+ * @param {object} todo 
+ * @returns {boolean}
+ */
+export function hasValidReminder(todo) {
+  return Boolean(todo && typeof todo.remindAt === 'number' && !isNaN(todo.remindAt) && todo.remindAt > 0);
+}
+
+/**
+ * Called when offscreen document dispatches OFFSCREEN_READY.
+ */
+export function handleOffscreenReady() {
+  if (offscreenReadyResolver) {
+    offscreenReadyResolver();
+    offscreenReadyResolver = null;
+  }
+}
+
+/**
+ * Ensures the offscreen audio playback document exists and is ready for playback messages.
  */
 async function ensureOffscreenDocument() {
   try {
     if (await chrome.offscreen.hasDocument()) {
       return;
     }
+
+    const readyPromise = new Promise((resolve) => {
+      offscreenReadyResolver = resolve;
+      // Fallback timeout after 2000ms if ready event fails
+      setTimeout(() => {
+        if (offscreenReadyResolver) {
+          offscreenReadyResolver();
+          offscreenReadyResolver = null;
+        }
+      }, 2000);
+    });
+
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_PATH,
       reasons: ['AUDIO_PLAYBACK'],
-      justification: 'Synthesize reminder alarm tone via Web Audio API'
+      justification: 'Synthesize reminder alarm tone'
     });
+
+    await readyPromise;
   } catch (err) {
-    console.warn('[KCN Reminders] Failed to create offscreen document:', err);
+    console.error('[KCN Reminders] Failed to create offscreen document:', err);
   }
 }
 
@@ -31,23 +70,59 @@ async function playSound() {
     if (!settings.soundEnabled) return;
 
     await ensureOffscreenDocument();
-    chrome.runtime.sendMessage({ type: MESSAGES.AUDIO_PLAY_ALARM }).catch(() => {});
+    chrome.runtime.sendMessage({
+      target: 'offscreen',
+      type: MESSAGES.AUDIO_PLAY_ALARM
+    }).catch((err) => {
+      console.error('[KCN Reminders] Failed to dispatch play audio to offscreen:', err);
+    });
   } catch (err) {
-    console.warn('[KCN Reminders] Sound playback error:', err);
+    console.error('[KCN Reminders] Sound playback error:', err);
   }
 }
 
 /**
- * Sends a command to stop sound in the offscreen document.
+ * Sends a command to stop sound in the offscreen document, then closes the offscreen document.
  * @param {boolean} force Whether to force stop all sounds.
  */
 async function stopSound(force = false) {
   try {
     if (await chrome.offscreen.hasDocument()) {
-      chrome.runtime.sendMessage({ type: MESSAGES.AUDIO_STOP_ALARM, force }).catch(() => {});
+      try {
+        await chrome.runtime.sendMessage({
+          target: 'offscreen',
+          type: MESSAGES.AUDIO_STOP_ALARM,
+          force
+        });
+      } catch (_) {}
+
+      try {
+        await chrome.offscreen.closeDocument();
+      } catch (closeErr) {
+        // Document may have already closed
+      }
     }
   } catch (err) {
-    console.warn('[KCN Reminders] Stop sound error:', err);
+    console.error('[KCN Reminders] Stop sound error:', err);
+  }
+}
+
+/**
+ * Plays synthetic alarm sound for 3 seconds to test audio functionality.
+ */
+export async function testSound() {
+  try {
+    if (testSoundTimer) {
+      clearTimeout(testSoundTimer);
+      testSoundTimer = null;
+    }
+    await playSound();
+    testSoundTimer = setTimeout(async () => {
+      await stopSound(true);
+      testSoundTimer = null;
+    }, 3000);
+  } catch (err) {
+    console.error('[KCN Reminders] Test sound error:', err);
   }
 }
 
@@ -69,13 +144,14 @@ async function broadcast(message) {
 
 /**
  * Updates the toolbar extension badge count with ringing/overdue tasks.
+ * Todos without a reminder must NEVER contribute to the badge count.
  */
 export async function refreshBadge() {
   try {
     const todos = await db.getTodos();
     const now = Date.now();
-    // Count todos that are actively ringing or past due and not completed
-    const dueCount = todos.filter((t) => !t.done && (t.ringing || (typeof t.remindAt === 'number' && t.remindAt <= now))).length;
+    // Count todos that are NOT done AND (are actively ringing OR have a valid remindAt <= now)
+    const dueCount = todos.filter((t) => !t.done && (t.ringing || (hasValidReminder(t) && t.remindAt <= now))).length;
 
     if (dueCount > 0) {
       await chrome.action.setBadgeText({ text: String(dueCount) });
@@ -84,7 +160,7 @@ export async function refreshBadge() {
       await chrome.action.setBadgeText({ text: '' });
     }
   } catch (err) {
-    console.warn('[KCN Reminders] Failed to update badge:', err);
+    console.error('[KCN Reminders] Failed to update badge:', err);
   }
 }
 
@@ -93,6 +169,7 @@ export async function refreshBadge() {
  * @param {string} todoId 
  */
 export async function clearTodoAlarms(todoId) {
+  if (!todoId) return;
   try {
     await chrome.alarms.clear(`todo:${todoId}`);
     await chrome.alarms.clear(`pre:${todoId}`);
@@ -102,7 +179,7 @@ export async function clearTodoAlarms(todoId) {
     await chrome.notifications.clear(`alarm:${todoId}`);
     await chrome.notifications.clear(`pre:${todoId}`);
   } catch (err) {
-    console.warn('[KCN Reminders] Failed to clear alarms:', err);
+    console.error(`[KCN Reminders] Failed to clear alarms for todo ${todoId}:`, err);
   }
 }
 
@@ -116,7 +193,7 @@ export async function scheduleReminder(todo) {
   // Clear any existing alarms for this todo
   await clearTodoAlarms(todo.id);
 
-  if (todo.done || !todo.remindAt) {
+  if (todo.done || !hasValidReminder(todo)) {
     return;
   }
 
@@ -146,7 +223,7 @@ async function handlePreAlert(todoId) {
   try {
     const todos = await db.getTodos();
     const todo = todos.find((t) => t.id === todoId);
-    if (!todo || todo.done || todo.preReminded) return;
+    if (!todo || todo.done || !hasValidReminder(todo) || todo.preReminded) return;
 
     // Update DB
     await db.updateTodo(todoId, { preReminded: true });
@@ -180,7 +257,7 @@ export async function startRinging(todoId, isMissed = false) {
   try {
     const todos = await db.getTodos();
     const todo = todos.find((t) => t.id === todoId);
-    if (!todo || todo.done) {
+    if (!todo || todo.done || !hasValidReminder(todo)) {
       await clearTodoAlarms(todoId);
       return;
     }
@@ -249,7 +326,7 @@ async function handleRepeatRing(todoId) {
   try {
     const todos = await db.getTodos();
     const todo = todos.find((t) => t.id === todoId);
-    if (!todo || todo.done || !todo.ringing) {
+    if (!todo || todo.done || !hasValidReminder(todo) || !todo.ringing) {
       await clearTodoAlarms(todoId);
       return;
     }
@@ -371,7 +448,7 @@ export async function markDoneAlarm(todoId) {
 
 /**
  * Rehydrates all alarms from IndexedDB upon startup or installation.
- * Fires missed reminders immediately.
+ * Fires missed reminders immediately and purges stale/orphaned alarm states.
  */
 export async function rehydrateAllReminders() {
   try {
@@ -379,7 +456,10 @@ export async function rehydrateAllReminders() {
     const now = Date.now();
 
     for (const todo of todos) {
-      if (todo.done) {
+      if (todo.done || !hasValidReminder(todo)) {
+        if (todo.ringing || todo.preReminded) {
+          await db.updateTodo(todo.id, { ringing: false, preReminded: false, reminded: false });
+        }
         await clearTodoAlarms(todo.id);
         continue;
       }
@@ -388,17 +468,17 @@ export async function rehydrateAllReminders() {
         // Still marked ringing from earlier session
         if ((todo.ringCount || 0) < MAX_REPEATS) {
           await startRinging(todo.id, true);
+        } else {
+          await stopSound(true);
         }
         continue;
       }
 
-      if (typeof todo.remindAt === 'number') {
-        if (todo.remindAt <= now && !todo.reminded) {
-          // Passed while Chrome was closed
-          await startRinging(todo.id, true);
-        } else if (todo.remindAt > now) {
-          await scheduleReminder(todo);
-        }
+      if (todo.remindAt <= now && !todo.reminded) {
+        // Passed while Chrome was closed
+        await startRinging(todo.id, true);
+      } else if (todo.remindAt > now) {
+        await scheduleReminder(todo);
       }
     }
 

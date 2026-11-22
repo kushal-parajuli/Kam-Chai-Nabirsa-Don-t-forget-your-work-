@@ -1,7 +1,10 @@
+// © 2026 Kushal Parajuli
+
 // Initialize popup state
 document.addEventListener('DOMContentLoaded', async () => {
   const toggle = document.getElementById('widget-toggle');
   const resetBtn = document.getElementById('reset-pos-btn');
+  const testSoundBtn = document.getElementById('test-sound-btn');
 
   // Load toggle state from storage (default: true)
   try {
@@ -37,6 +40,28 @@ document.addEventListener('DOMContentLoaded', async () => {
       }, 1500);
     } catch (err) {
       console.error('Failed to reset widget position:', err);
+    }
+  });
+
+  // Handle test alarm sound (plays 3 seconds)
+  testSoundBtn?.addEventListener('click', async () => {
+    try {
+      const original = testSoundBtn.textContent;
+      testSoundBtn.textContent = 'Playing Sound...';
+      testSoundBtn.disabled = true;
+
+      chrome.runtime.sendMessage({ type: 'TEST_SOUND' }, (res) => {
+        if (chrome.runtime.lastError) {
+          console.warn('Test sound error:', chrome.runtime.lastError);
+        }
+      });
+
+      setTimeout(() => {
+        testSoundBtn.textContent = original;
+        testSoundBtn.disabled = false;
+      }, 3200);
+    } catch (err) {
+      console.error('Failed to trigger test sound:', err);
     }
   });
 });
