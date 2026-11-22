@@ -20,7 +20,7 @@ export function closeDB() {
   if (dbInstance) {
     try {
       dbInstance.close();
-    } catch (_) {}
+    } catch (_) { }
     dbInstance = null;
   }
   dbOpenPromise = null;
