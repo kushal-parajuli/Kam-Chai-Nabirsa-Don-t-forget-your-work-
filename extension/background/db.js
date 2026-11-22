@@ -11,6 +11,7 @@ const DB_NAME = 'kcn-db';
 const DB_VERSION = 4;
 
 let dbInstance = null;
+let dbOpenPromise = null;
 
 /**
  * Closes the active database connection and resets the cached instance.
@@ -22,18 +23,35 @@ export function closeDB() {
     } catch (_) {}
     dbInstance = null;
   }
+  dbOpenPromise = null;
 }
 
 /**
  * Opens or returns the cached IndexedDB database connection.
+ * Guards against concurrent opening requests and hanging onblocked states.
+ * Rejects with a clear timeout error after 5 seconds if blocked by another connection.
  * @returns {Promise<IDBDatabase>}
  */
 export function openDB() {
   if (dbInstance) {
     return Promise.resolve(dbInstance);
   }
+  if (dbOpenPromise) {
+    return dbOpenPromise;
+  }
 
-  return new Promise((resolve, reject) => {
+  dbOpenPromise = new Promise((resolve, reject) => {
+    let settled = false;
+
+    // Reject after 5 seconds if open is blocked by another unclosed connection
+    const timeoutTimer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        dbOpenPromise = null;
+        reject(new Error('IndexedDB open timed out after 5000ms. Database upgrade is blocked by an unclosed connection in another tab. Please refresh or close other tabs.'));
+      }
+    }, 5000);
+
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
@@ -48,19 +66,21 @@ export function openDB() {
         todoStore = tx.objectStore('todos');
       }
 
-      // Delete any legacy indexes ('done', 'remindAt') to prevent invalid key or range queries
-      if (todoStore.indexNames.contains('done')) {
-        try {
-          todoStore.deleteIndex('done');
-        } catch (err) {
-          console.warn('[KCN DB] Failed to delete legacy done index:', err);
+      // Safely delete legacy or unused indexes if present (guarded with contains)
+      if (todoStore && todoStore.indexNames) {
+        if (todoStore.indexNames.contains('done')) {
+          try {
+            todoStore.deleteIndex('done');
+          } catch (err) {
+            console.warn('[KCN DB] Failed to delete legacy done index:', err);
+          }
         }
-      }
-      if (todoStore.indexNames.contains('remindAt')) {
-        try {
-          todoStore.deleteIndex('remindAt');
-        } catch (err) {
-          console.warn('[KCN DB] Failed to delete remindAt index:', err);
+        if (todoStore.indexNames.contains('remindAt')) {
+          try {
+            todoStore.deleteIndex('remindAt');
+          } catch (err) {
+            console.warn('[KCN DB] Failed to delete legacy remindAt index:', err);
+          }
         }
       }
 
@@ -76,24 +96,37 @@ export function openDB() {
       }
     };
 
-    request.onblocked = () => {
-      console.warn('[KCN DB] Database open blocked: please close other tabs running older database version.');
+    request.onblocked = (event) => {
+      console.warn('[KCN DB] Database open blocked by unclosed connection:', event);
     };
 
     request.onsuccess = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      dbOpenPromise = null;
+
       dbInstance = request.result;
       dbInstance.onversionchange = () => {
-        console.warn('[KCN DB] Database version change detected, closing connection.');
+        console.warn('[KCN DB] Database version change detected, closing connection immediately.');
         closeDB();
       };
       resolve(dbInstance);
     };
 
     request.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      dbOpenPromise = null;
+
+      const errMsg = request.error?.message || 'Unknown error';
       console.error('[KCN DB] Failed to open IndexedDB:', request.error);
-      reject(new Error(`Failed to open IndexedDB: ${request.error?.message || 'Unknown error'}`));
+      reject(new Error(`Failed to open IndexedDB: ${errMsg}`));
     };
   });
+
+  return dbOpenPromise;
 }
 
 /**

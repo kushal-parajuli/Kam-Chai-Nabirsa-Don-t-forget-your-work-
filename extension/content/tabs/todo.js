@@ -251,34 +251,75 @@
     const toastEl = paneElement.querySelector('#kcn-todo-toast');
     const toastUndoBtn = paneElement.querySelector('#kcn-toast-undo-btn');
 
+    let errorTimer = null;
+
     // Display friendly error with actual message
     function showError(message) {
       if (!errorEl) return;
       errorEl.textContent = message;
       errorEl.classList.remove('kcn-hidden');
-      setTimeout(() => {
+      if (errorTimer) clearTimeout(errorTimer);
+      errorTimer = setTimeout(() => {
         errorEl.classList.add('kcn-hidden');
         errorEl.textContent = '';
-      }, 5000);
+      }, 7000);
     }
 
-    // Message sender
+    // Message sender with timeout and context-invalidation guards
     function sendMsg(type, payload = {}) {
       return new Promise((resolve, reject) => {
+        let settled = false;
+
+        const timer = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            reject(new Error('Operation timed out. Background service worker took too long to respond.'));
+          }
+        }, 6000);
+
         try {
+          if (!window.chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+            clearTimeout(timer);
+            reject(new Error('Extension was reloaded. Please refresh this page.'));
+            return;
+          }
+
           chrome.runtime.sendMessage({ type, payload }, (response) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+
             if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
+              const raw = chrome.runtime.lastError.message || '';
+              if (raw.toLowerCase().includes('context invalidated')) {
+                reject(new Error('Extension was reloaded. Please refresh this page.'));
+              } else {
+                reject(new Error(raw || 'Failed to communicate with extension background.'));
+              }
               return;
             }
-            if (response && response.ok) {
+
+            if (!response) {
+              reject(new Error('No response from background. Extension was reloaded. Please refresh this page.'));
+              return;
+            }
+
+            if (response.ok) {
               resolve(response.data);
             } else {
-              reject(new Error(response?.error || 'Unknown storage error'));
+              reject(new Error(response.error || 'Storage operation failed.'));
             }
           });
         } catch (err) {
-          reject(err);
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          const raw = err?.message || String(err || '');
+          if (raw.toLowerCase().includes('context invalidated')) {
+            reject(new Error('Extension was reloaded. Please refresh this page.'));
+          } else {
+            reject(err);
+          }
         }
       });
     }

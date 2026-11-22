@@ -133,8 +133,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Window type validation to ensure widget only mounts in normal tabs
   if (type === MESSAGES.CHECK_CAN_MOUNT || type === 'CHECK_CAN_MOUNT') {
     if (!sender.tab || sender.tab.windowId === undefined) {
-      sendResponse(createResponse(true, { shouldMount: false }));
-      return false;
+      chrome.windows.getCurrent()
+        .then((win) => {
+          const shouldMount = Boolean(win && win.type === 'normal');
+          sendResponse(createResponse(true, { shouldMount }));
+        })
+        .catch(() => {
+          sendResponse(createResponse(true, { shouldMount: true }));
+        });
+      return true;
     }
     chrome.windows.get(sender.tab.windowId)
       .then((win) => {
@@ -143,7 +150,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })
       .catch((err) => {
         console.warn('[KCN Service Worker] Window check error for mount:', err);
-        sendResponse(createResponse(true, { shouldMount: false }));
+        sendResponse(createResponse(true, { shouldMount: true }));
       });
     return true;
   }

@@ -20,9 +20,19 @@
 
   // Verify that the current window is a normal Chrome window (not popup, PiP, or app)
   try {
+    if (!chrome?.runtime?.sendMessage) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupWidget, { once: true });
+      } else {
+        setupWidget();
+      }
+      return;
+    }
+
     chrome.runtime.sendMessage({ type: 'CHECK_CAN_MOUNT' }, (response) => {
-      if (chrome.runtime.lastError) return;
-      if (response && response.ok && response.data?.shouldMount) {
+      // Default to mounting if top window and no explicit shouldMount: false
+      const shouldMount = response ? Boolean(response.ok && response.data?.shouldMount) : true;
+      if (shouldMount) {
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', setupWidget, { once: true });
         } else {
@@ -30,7 +40,13 @@
         }
       }
     });
-  } catch (_) {}
+  } catch (_) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setupWidget, { once: true });
+    } else {
+      setupWidget();
+    }
+  }
 
   function setupWidget() {
     // Configuration & State
