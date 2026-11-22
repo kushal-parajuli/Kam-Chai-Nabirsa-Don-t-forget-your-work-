@@ -506,3 +506,309 @@ export async function clearCompletedTodos() {
     };
   });
 }
+
+/**
+ * Strips the binary Blob from a note record to ensure serialization safety across messaging.
+ * @param {object} note 
+ * @returns {object}
+ */
+function sanitizeNote(note) {
+  if (!note) return null;
+  const { blob, ...rest } = note;
+  return rest;
+}
+
+/**
+ * Retrieves all notes from IndexedDB.
+ * Returns records WITHOUT binary Blobs (only thumbnail data URLs).
+ * Sorted: pinned first, then newest first (sorting performed in JavaScript).
+ * @returns {Promise<Array<object>>}
+ */
+export async function getNotes() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readonly');
+    const store = tx.objectStore('notes');
+    const req = store.getAll();
+
+    req.onsuccess = () => {
+      const records = req.result || [];
+      const sanitized = records.map(sanitizeNote);
+      sanitized.sort((a, b) => {
+        if (Boolean(b.pinned) !== Boolean(a.pinned)) {
+          return b.pinned ? 1 : -1;
+        }
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+      resolve(sanitized);
+    };
+
+    req.onerror = () => {
+      console.error('[KCN DB] Failed to list notes:', req.error);
+      reject(new Error(`Failed to list notes: ${req.error?.message}`));
+    };
+  });
+}
+
+/**
+ * Retrieves a single note by ID, including its full Blob if present.
+ * @param {string} id 
+ * @returns {Promise<object|null>}
+ */
+export async function getNoteById(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readonly');
+    const store = tx.objectStore('notes');
+    const req = store.get(id);
+
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => {
+      console.error(`[KCN DB] Failed to get note ${id}:`, req.error);
+      reject(new Error(`Failed to get note: ${req.error?.message}`));
+    };
+  });
+}
+
+/**
+ * Adds a new text or image note to IndexedDB.
+ * @param {object} noteData 
+ * @returns {Promise<object>} Sanitized note record without Blob
+ */
+export async function addNote(noteData) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const now = Date.now();
+    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `note-${now}-${Math.random().toString(36).slice(2, 9)}`;
+
+    const kind = noteData.kind === 'image' ? 'image' : 'text';
+    const isImage = kind === 'image';
+
+    const record = {
+      id,
+      kind,
+      text: isImage ? null : String(noteData.text || ''),
+      blob: isImage ? (noteData.blob || null) : null,
+      mimeType: noteData.mimeType || (isImage ? 'image/png' : 'text/plain'),
+      thumb: noteData.thumb || null,
+      fileName: noteData.fileName || null,
+      size: typeof noteData.size === 'number' ? noteData.size : 0,
+      createdAt: now,
+      updatedAt: now,
+      pinned: Boolean(noteData.pinned)
+    };
+
+    let saved = null;
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.objectStore('notes');
+
+    const req = store.add(record);
+    req.onsuccess = () => {
+      saved = sanitizeNote(record);
+    };
+    req.onerror = () => {
+      console.error('[KCN DB] Failed to add note:', req.error);
+      reject(new Error(`Failed to add note: ${req.error?.message}`));
+    };
+
+    tx.oncomplete = () => {
+      if (saved) resolve(saved);
+    };
+    tx.onerror = () => {
+      console.error('[KCN DB] Transaction error adding note:', tx.error);
+      reject(new Error(`Transaction failed: ${tx.error?.message}`));
+    };
+    tx.onabort = () => {
+      reject(new Error(`Add note transaction aborted: ${tx.error?.message || 'Aborted'}`));
+    };
+  });
+}
+
+/**
+ * Updates the text content of an existing text note.
+ * @param {string} id 
+ * @param {string} newText 
+ * @returns {Promise<object>} Updated sanitized note
+ */
+export async function updateNoteText(id, newText) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.objectStore('notes');
+    let updatedRecord = null;
+
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      if (!existing) {
+        reject(new Error(`Note not found: ${id}`));
+        return;
+      }
+      if (existing.kind !== 'text') {
+        reject(new Error('Cannot update text on a non-text note'));
+        return;
+      }
+
+      existing.text = String(newText || '');
+      existing.updatedAt = Date.now();
+      if (typeof Blob !== 'undefined') {
+        existing.size = new Blob([existing.text]).size;
+      } else {
+        existing.size = Buffer.byteLength(existing.text, 'utf8');
+      }
+
+      updatedRecord = sanitizeNote(existing);
+      store.put(existing);
+    };
+
+    getReq.onerror = () => {
+      console.error('[KCN DB] Failed to retrieve note for update:', getReq.error);
+      reject(new Error(`Failed to retrieve note: ${getReq.error?.message}`));
+    };
+
+    tx.oncomplete = () => {
+      if (updatedRecord) resolve(updatedRecord);
+    };
+    tx.onerror = () => {
+      console.error('[KCN DB] Transaction error updating note:', tx.error);
+      reject(new Error(`Failed to update note: ${tx.error?.message}`));
+    };
+    tx.onabort = () => {
+      reject(new Error(`Update note transaction aborted: ${tx.error?.message || 'Aborted'}`));
+    };
+  });
+}
+
+/**
+ * Pins or unpins a note.
+ * @param {string} id 
+ * @param {boolean} [pinned] If undefined, toggles the pinned state
+ * @returns {Promise<object>} Updated sanitized note
+ */
+export async function setNotePin(id, pinned) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.objectStore('notes');
+    let updatedRecord = null;
+
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      if (!existing) {
+        reject(new Error(`Note not found: ${id}`));
+        return;
+      }
+
+      existing.pinned = typeof pinned === 'boolean' ? pinned : !existing.pinned;
+      existing.updatedAt = Date.now();
+
+      updatedRecord = sanitizeNote(existing);
+      store.put(existing);
+    };
+
+    getReq.onerror = () => {
+      console.error('[KCN DB] Failed to retrieve note for pin:', getReq.error);
+      reject(new Error(`Failed to retrieve note: ${getReq.error?.message}`));
+    };
+
+    tx.oncomplete = () => {
+      if (updatedRecord) resolve(updatedRecord);
+    };
+    tx.onerror = () => {
+      console.error('[KCN DB] Transaction error pinning note:', tx.error);
+      reject(new Error(`Failed to pin note: ${tx.error?.message}`));
+    };
+    tx.onabort = () => {
+      reject(new Error(`Pin note transaction aborted: ${tx.error?.message || 'Aborted'}`));
+    };
+  });
+}
+
+/**
+ * Deletes a single note by ID.
+ * @param {string} id 
+ * @returns {Promise<{ id: string }>}
+ */
+export async function deleteNote(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.objectStore('notes');
+    let deleted = false;
+
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      if (!existing) {
+        reject(new Error(`Note not found: ${id}`));
+        return;
+      }
+      deleted = true;
+      store.delete(id);
+    };
+
+    getReq.onerror = () => {
+      console.error('[KCN DB] Failed to retrieve note for deletion:', getReq.error);
+      reject(new Error(`Failed to retrieve note: ${getReq.error?.message}`));
+    };
+
+    tx.oncomplete = () => {
+      if (deleted) resolve({ id });
+    };
+    tx.onerror = () => {
+      console.error('[KCN DB] Transaction error deleting note:', tx.error);
+      reject(new Error(`Failed to delete note: ${tx.error?.message}`));
+    };
+    tx.onabort = () => {
+      reject(new Error(`Delete note transaction aborted: ${tx.error?.message || 'Aborted'}`));
+    };
+  });
+}
+
+/**
+ * Clears notes from the database.
+ * If alsoDeletePinned is true, clears all notes.
+ * If false, leaves pinned notes intact.
+ * Scans with an open cursor (no index key range).
+ * @param {boolean} [alsoDeletePinned=false] 
+ * @returns {Promise<{ count: number, deletedNotes: Array<object> }>}
+ */
+export async function clearNotes(alsoDeletePinned = false) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const deletedNotes = [];
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.objectStore('notes');
+    const cursorReq = store.openCursor();
+
+    cursorReq.onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (cursor) {
+        const record = cursor.value;
+        const shouldDelete = alsoDeletePinned || !record.pinned;
+        if (shouldDelete) {
+          deletedNotes.push(sanitizeNote(record));
+          cursor.delete();
+        }
+        cursor.continue();
+      }
+    };
+
+    cursorReq.onerror = () => {
+      console.error('[KCN DB] Cursor error scanning notes:', cursorReq.error);
+      reject(new Error(`Cursor scan failed: ${cursorReq.error?.message}`));
+    };
+
+    tx.oncomplete = () => {
+      resolve({ count: deletedNotes.length, deletedNotes });
+    };
+    tx.onerror = () => {
+      console.error('[KCN DB] Transaction error clearing notes:', tx.error);
+      reject(new Error(`Transaction failed: ${tx.error?.message}`));
+    };
+    tx.onabort = () => {
+      reject(new Error(`Clear notes transaction aborted: ${tx.error?.message || 'Aborted'}`));
+    };
+  });
+}

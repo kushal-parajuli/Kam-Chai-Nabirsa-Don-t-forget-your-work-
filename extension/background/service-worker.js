@@ -1,6 +1,7 @@
 // © 2026 Kushal Parajuli
 
 import { MESSAGES, createResponse } from '../shared/messages.js';
+import { dataUrlToBlob, blobToDataUrl } from '../shared/utils.js';
 import * as db from './db.js';
 import * as reminders from './reminders.js';
 
@@ -348,6 +349,163 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           console.error('[KCN Service Worker] Failed to save settings:', err);
           sendResponse(createResponse(false, null, err.message));
         });
+      return true;
+
+    // Notes operations (Phase 4)
+    case MESSAGES.NOTE_LIST:
+      db.getNotes()
+        .then((notes) => sendResponse(createResponse(true, notes)))
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to list notes:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    case MESSAGES.NOTE_ADD:
+      (async () => {
+        try {
+          const { kind, text, dataUrl, mimeType, thumb, fileName, size, pinned } = payload || {};
+          if (kind === 'text') {
+            if (!text || typeof text !== 'string' || !text.trim()) {
+              sendResponse(createResponse(false, null, 'Note text cannot be empty'));
+              return;
+            }
+            if (text.length > 20000) {
+              sendResponse(createResponse(false, null, 'Note exceeds 20,000 characters limit'));
+              return;
+            }
+            const note = await db.addNote({
+              kind: 'text',
+              text: text.trim(),
+              mimeType: 'text/plain',
+              size: typeof size === 'number' ? size : new Blob([text.trim()]).size,
+              pinned: Boolean(pinned)
+            });
+            sendResponse(createResponse(true, note));
+            broadcastToAllTabs({ type: MESSAGES.NOTES_CHANGED });
+          } else if (kind === 'image') {
+            if (!dataUrl) {
+              sendResponse(createResponse(false, null, 'No image data provided'));
+              return;
+            }
+            const allowedMimes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+            const mime = mimeType || (dataUrl.match(/data:(.*?);/)?.[1] || 'image/png');
+            if (!allowedMimes.includes(mime)) {
+              sendResponse(createResponse(false, null, 'Only PNG, JPEG, GIF, and WEBP images are supported'));
+              return;
+            }
+            const blob = await dataUrlToBlob(dataUrl, mime);
+            if (blob.size > 10 * 1024 * 1024) {
+              sendResponse(createResponse(false, null, `Image exceeds 10 MB limit (${(blob.size / (1024 * 1024)).toFixed(1)} MB)`));
+              return;
+            }
+            const note = await db.addNote({
+              kind: 'image',
+              blob,
+              mimeType: mime,
+              thumb: thumb || null,
+              fileName: fileName || null,
+              size: blob.size,
+              pinned: Boolean(pinned)
+            });
+            sendResponse(createResponse(true, note));
+            broadcastToAllTabs({ type: MESSAGES.NOTES_CHANGED });
+          } else {
+            sendResponse(createResponse(false, null, 'Invalid note kind'));
+          }
+        } catch (err) {
+          console.error('[KCN Service Worker] Failed to add note:', err);
+          sendResponse(createResponse(false, null, err.message));
+        }
+      })();
+      return true;
+
+    case MESSAGES.NOTE_UPDATE:
+      (async () => {
+        try {
+          const { id, text } = payload || {};
+          if (!id) {
+            sendResponse(createResponse(false, null, 'Note ID is required'));
+            return;
+          }
+          if (!text || typeof text !== 'string' || !text.trim()) {
+            sendResponse(createResponse(false, null, 'Note text cannot be empty'));
+            return;
+          }
+          if (text.length > 20000) {
+            sendResponse(createResponse(false, null, 'Note exceeds 20,000 characters limit'));
+            return;
+          }
+          const updated = await db.updateNoteText(id, text.trim());
+          sendResponse(createResponse(true, updated));
+          broadcastToAllTabs({ type: MESSAGES.NOTES_CHANGED });
+        } catch (err) {
+          console.error('[KCN Service Worker] Failed to update note:', err);
+          sendResponse(createResponse(false, null, err.message));
+        }
+      })();
+      return true;
+
+    case MESSAGES.NOTE_DELETE:
+      db.deleteNote(payload?.id)
+        .then((res) => {
+          sendResponse(createResponse(true, res));
+          broadcastToAllTabs({ type: MESSAGES.NOTES_CHANGED });
+        })
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to delete note:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    case MESSAGES.NOTE_PIN:
+      db.setNotePin(payload?.id, payload?.pinned)
+        .then((res) => {
+          sendResponse(createResponse(true, res));
+          broadcastToAllTabs({ type: MESSAGES.NOTES_CHANGED });
+        })
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to pin note:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    case MESSAGES.NOTES_CLEAR:
+      db.clearNotes(Boolean(payload?.alsoDeletePinned))
+        .then((res) => {
+          sendResponse(createResponse(true, res));
+          broadcastToAllTabs({ type: MESSAGES.NOTES_CHANGED });
+        })
+        .catch((err) => {
+          console.error('[KCN Service Worker] Failed to clear notes:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    case MESSAGES.NOTE_GET_FULL:
+      (async () => {
+        try {
+          const note = await db.getNoteById(payload?.id);
+          if (!note) {
+            sendResponse(createResponse(false, null, 'Note not found'));
+            return;
+          }
+          if (note.kind !== 'image' || !note.blob) {
+            sendResponse(createResponse(false, null, 'Note does not contain an image'));
+            return;
+          }
+          const dataUrl = await blobToDataUrl(note.blob, note.mimeType);
+          sendResponse(createResponse(true, {
+            id: note.id,
+            dataUrl,
+            mimeType: note.mimeType,
+            fileName: note.fileName
+          }));
+        } catch (err) {
+          console.error('[KCN Service Worker] Failed to get full note image:', err);
+          sendResponse(createResponse(false, null, err.message));
+        }
+      })();
       return true;
 
     case MESSAGES.BADGE_REFRESH:

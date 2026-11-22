@@ -42,6 +42,7 @@
       "js": [
         "content/widget-css.js",
         "content/tabs/todo.js",
+        "content/tabs/notes.js",
         "content/widget.js"
       ],
       "run_at": "document_idle",

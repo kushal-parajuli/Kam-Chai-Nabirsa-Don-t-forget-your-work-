@@ -68,6 +68,7 @@
     };
 
     let todoApi = null;
+    let notesApi = null;
     let currentRingingTodo = null;
 
     // Create Host Element
@@ -214,6 +215,7 @@
     const tabBtns = shadowRoot.querySelectorAll('.kcn-tab-btn');
     const tabPanes = shadowRoot.querySelectorAll('.kcn-tab-pane');
     const todoPane = shadowRoot.querySelector('[data-pane="todo"]');
+    const notesPane = shadowRoot.querySelector('[data-pane="notes"]');
 
     // Alarm elements
     const alarmBanner = shadowRoot.getElementById('kcn-alarm-banner');
@@ -312,6 +314,13 @@
       todoApi = window.__kcn_initTodoTab({
         paneElement: todoPane,
         onBadgeUpdate: updateBadge
+      });
+    }
+
+    // Initialize Notes Tab Component (Phase 4)
+    if (typeof window.__kcn_initNotesTab === 'function') {
+      notesApi = window.__kcn_initNotesTab({
+        paneElement: notesPane
       });
     }
 
@@ -471,6 +480,12 @@
         const match = pane.getAttribute('data-pane') === tabName;
         pane.classList.toggle('kcn-pane-active', match);
       });
+
+      if (tabName === 'notes') {
+        notesApi?.reload?.();
+      } else if (tabName === 'todo') {
+        todoApi?.reload?.();
+      }
 
       chrome.storage.local.set({ lastActiveTab: tabName }).catch(() => {});
     }
