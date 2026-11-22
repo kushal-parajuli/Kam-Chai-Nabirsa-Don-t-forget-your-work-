@@ -1,0 +1,12 @@
+{
+  "name": "kam-chai-nabirsa",
+  "version": "0.1.0",
+  "description": "Kam Chai Nabirsa - Chrome extension",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/db.test.js"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.0.0"
+  }
+}
