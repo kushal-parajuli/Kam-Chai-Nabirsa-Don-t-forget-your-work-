@@ -79,19 +79,24 @@ The Downloader tab requires the local Python companion server to safely run `yt-
 ### Setup & Launch
 1. Open a terminal in the `helper/` directory:
    ```powershell
-   cd helper
+   cd "D:\Kam Chai Nabirsa\helper"
    python -m venv venv
-   .\venv\Scripts\activate
+   .\venv\Scripts\Activate.ps1
    pip install -r requirements.txt
    ```
-2. Start the helper server:
+2. Copy the example configuration and add your Chrome extension ID:
+   ```powershell
+   copy config.example.json config.json
+   ```
+   Open `helper/config.json` and set `"allowedOrigin": "chrome-extension://YOUR_EXTENSION_ID_HERE"` (find your ID at `chrome://extensions`).
+3. Start the helper server:
    ```powershell
    python server.py
    ```
    *(Or double-click `helper\start-helper.bat` on Windows)*
-3. On first startup, the server automatically generates a secure random token into `helper/token.txt` (git-ignored) and prints it to the console.
-4. Open the extension, click the gear icon to open **Settings**, and paste the token into the **Helper Token** field.
-5. Switch to the Downloader tab; the status banner will turn green: `Helper online` with `ffmpeg found`.
+4. On first startup, the server automatically generates a secure random token into `helper/token.txt` (git-ignored) and prints it to the console.
+5. Open the extension, click the gear icon to open **Settings**, and paste the token into the **Helper Token** field.
+6. Switch to the Downloader tab; the status banner will turn green: `Helper online` with `ffmpeg found`.
 
 ---
 
@@ -189,6 +194,17 @@ IndexedDB storage (`kcn-db`) is managed exclusively by the background service wo
 - **Local File URLs (`file:///...`)**: To use the floating widget on local HTML files, open `chrome://extensions` > Details for Kam Chai Nabirsa > enable **"Allow access to file URLs"**.
 - **Browser Startup Alerts**: Scheduled reminders trigger while the Chrome browser process is running. If Chrome was closed when a reminder was scheduled, it fires immediately as a "Missed" alarm upon launching Chrome.
 - **Developer Mode Notice**: Because this is an unpacked extension, Chrome may periodically display a standard "Disable developer mode extensions" dialog upon startup.
+- **JSON Data Backup Content**: JSON data backups (`kam-chai-nabirsa-backup-YYYY-MM-DD.json`) back up all todos, text notes, and settings. Large binary images are excluded from JSON backups to keep files lightweight and portable.
+
+---
+
+## Roadmap
+
+The following capabilities are planned for future revisions (not included in v0.1.0):
+- **Web Image Dragging**: Dragging images directly from external websites into the Notes tab drop zone.
+- **Recurring Reminders**: Repeating schedule intervals (daily, weekly, custom days).
+- **Full Popup View**: A complete standalone popup view for restricted browser pages where content scripts cannot inject.
+- **Mobile Android Companion**: Synchronizing tasks and notes with an Android companion application.
 
 ---
 
@@ -198,3 +214,5 @@ This is a personal practice and educational project. Feel free to fork or adapt 
 
 Copyright (c) 2026 Kushal Parajuli.  
 Licensed under the [MIT License](LICENSE).
+
+© 2026 Kushal Parajuli
