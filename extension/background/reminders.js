@@ -101,7 +101,7 @@ async function stopSound(force = false) {
           type: MESSAGES.AUDIO_STOP_ALARM,
           force
         });
-      } catch (_) {}
+      } catch (_) { }
 
       try {
         await chrome.offscreen.closeDocument();
@@ -143,7 +143,7 @@ async function broadcast(message) {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
       if (!tab.id) continue;
-      chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+      chrome.tabs.sendMessage(tab.id, message).catch(() => { });
     }
   } catch (err) {
     console.warn('[KCN Reminders] Tab broadcast failed:', err);

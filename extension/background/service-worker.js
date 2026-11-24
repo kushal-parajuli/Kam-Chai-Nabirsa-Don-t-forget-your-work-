@@ -21,9 +21,9 @@ async function injectWidgetIntoAllTabs() {
       for (const tab of win.tabs || []) {
         if (!tab.id || !tab.url) continue;
 
-        const isInjectable = tab.url.startsWith('http://') || 
-                             tab.url.startsWith('https://') || 
-                             tab.url.startsWith('file:///');
+        const isInjectable = tab.url.startsWith('http://') ||
+          tab.url.startsWith('https://') ||
+          tab.url.startsWith('file:///');
 
         if (!isInjectable) continue;
 
@@ -57,7 +57,7 @@ async function broadcastToAllTabs(message) {
     const tabs = await chrome.tabs.query({});
     for (const tab of tabs) {
       if (!tab.id) continue;
-      chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+      chrome.tabs.sendMessage(tab.id, message).catch(() => { });
     }
   } catch (err) {
     console.error('[KCN Service Worker] Error broadcasting message:', err);
@@ -160,7 +160,7 @@ function notifyDownloadComplete(job) {
   if (!job || !job.id || notifiedDownloadJobs.has(job.id)) return;
   notifiedDownloadJobs.add(job.id);
   if (typeof chrome !== 'undefined' && chrome.notifications?.create) {
-    const icon = typeof chrome.runtime?.getURL === 'function' 
+    const icon = typeof chrome.runtime?.getURL === 'function'
       ? chrome.runtime.getURL('icons/icon128.png')
       : 'icons/icon128.png';
     chrome.notifications.create(`dl-done:${job.id}`, {
@@ -179,7 +179,7 @@ function notifyDownloadFailed(job) {
   if (!job || !job.id || notifiedDownloadJobs.has(job.id)) return;
   notifiedDownloadJobs.add(job.id);
   if (typeof chrome !== 'undefined' && chrome.notifications?.create) {
-    const icon = typeof chrome.runtime?.getURL === 'function' 
+    const icon = typeof chrome.runtime?.getURL === 'function'
       ? chrome.runtime.getURL('icons/icon128.png')
       : 'icons/icon128.png';
     chrome.notifications.create(`dl-error:${job.id}`, {

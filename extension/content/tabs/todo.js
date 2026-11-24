@@ -947,4 +947,10 @@
 
   // Export to isolated window scope
   window.__kcn_initTodoTab = initTodoTab;
+  window.__kcn_todoHelpers = {
+    formatTimeLeft,
+    formatExactTime,
+    toDateInput,
+    toTimeInput
+  };
 })();
