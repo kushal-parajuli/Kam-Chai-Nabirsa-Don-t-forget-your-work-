@@ -407,15 +407,15 @@ Phase 4: Notes tab
 Phase 5: Settings and polish [COMPLETE]
 • Settings panel, themes, opacity, sound toggle, snooze length, JSON export/import, popup fallback page.
 • Done when: all settings persist and apply live, and export then import restores todos and text notes. Complete: unified settings schema, clamping, dynamic reminder parameters, daily maintenance auto-delete, and full JSON round-trip tests.
-Phase 6: Downloader UI and helper skeleton
+Phase 6: Downloader UI and helper skeleton [COMPLETE]
 • Downloader tab UI with the status indicator, Python helper with /ping, token and CORS rules, helper/README.md.
-• Done when: the tab shows Helper online when server.py is running and offline when stopped, and requests without the token get 401.
-Phase 7: Real downloads
+• Done when: the tab shows Helper online when server.py is running and offline when stopped, and requests without the token get 401. Complete: Downloader tab layout, helper skeleton, token auth, CORS restriction, and test suites.
+Phase 7: Real downloads [COMPLETE]
 • /download, /status, yt-dlp and ffmpeg integration, progress polling, history, friendly errors.
-• Done when: a link the owner is permitted to download produces a playable mp4 and an mp3 in the output folder, with progress shown in the tab, and errors (bad link, helper offline, ffmpeg missing) are explained clearly.
-Phase 8: Hardening, documentation and release
+• Done when: a link the owner is permitted to download produces a playable mp4 and an mp3 in the output folder, with progress shown in the tab, and errors (bad link, helper offline, ffmpeg missing) are explained clearly. Complete: yt-dlp subprocess execution, safe URL validation, background job queue, real-time progress polling, job cancellation, download notifications, and open folder.
+Phase 8: Hardening, documentation and release [COMPLETE]
 • Run the Section 15 checklist, fix issues, write docs/ARCHITECTURE.md, finalise README with screenshots placeholders, tag v0.1.0.
-• Done when: the checklist passes and the GitHub repository is clean and documented.
+• Done when: the checklist passes and the GitHub repository is clean and documented. Complete: ARCHITECTURE.md, TESTING.md, CHANGELOG.md, finalized README.md, full automated test coverage, and v0.1.0 release tag.
 14. Coding standards
 • ES modules, const/let, async/await, strict equality, no global variables.
 • Small single-purpose functions and files. Descriptive names. JSDoc on exported functions.

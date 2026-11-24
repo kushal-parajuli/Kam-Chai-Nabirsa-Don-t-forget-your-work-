@@ -1,3 +1,5 @@
+// © 2026 Kushal Parajuli
+
 import 'fake-indexeddb/auto';
 import { test, describe, before, afterEach } from 'node:test';
 import assert from 'node:assert/strict';

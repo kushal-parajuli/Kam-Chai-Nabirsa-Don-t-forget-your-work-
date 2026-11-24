@@ -2,6 +2,8 @@
 __pycache__/
 .venv/
 venv/
+helper/venv/
+*/venv/
 .pytest_cache/
 helper/token.txt
 helper/config.json
