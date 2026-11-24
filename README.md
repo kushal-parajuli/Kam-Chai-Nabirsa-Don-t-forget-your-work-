@@ -51,7 +51,19 @@ python server.py
   - **Single Note (.txt)**: Click "Download .txt" on any text card to download a clean UTF-8 text file with Windows line endings (`\r\n`) named `note-[slug]-YYYY-MM-DD-HHmm.txt`.
   - **Master Export**: Click "Download all notes (.txt)" in the Notes tab header to download `kam-chai-nabirsa-notes-YYYY-MM-DD.txt` containing a copyright header (`Kam Chai Nabirsa - notes export - © 2026 Kushal Parajuli`), export timestamp, and all notes separated by 40 dashes (pinned first, then newest first).
   - **Image Downloads**: Click "Download image" on any image card to download the full image as `note-image-YYYY-MM-DD-HHmm.<ext>`.
-- **Downloader**: Paste a URL, choose MP4 or MP3, and track download progress.
+- **Settings & Preferences (Phase 5)**: Click the gear icon in the panel header to customize:
+  - **Theme**: System, Light, or Dark mode applied live across the Shadow DOM widget.
+  - **Idle Opacity**: Adjust pill resting opacity from 0.20 to 1.00 via interactive slider.
+  - **Reminder Sound & Snooze**: Toggle audio ringtone playback and set default snooze duration (5, 10, or 15 minutes).
+  - **Notes Retention**: Set auto-deletion policies for older text notes.
+  - **Helper Configuration**: Set helper port (default `8765`) and paste the authentication token from `helper/token.txt` with a password visibility toggle.
+  - **JSON Data Backup & Restore**: One-click export of all todos and text notes as a structured JSON backup file, and full JSON restore with live tab re-population.
+- **Downloader Tab & Local Helper Skeleton (Phase 6)**:
+  - **Status Indicator**: Live health banner shows `Helper online` (green dot with FFmpeg status badge), `Helper online - token missing/wrong` (amber dot with direct link to Settings), or `Helper offline` (red dot with batch startup hint).
+  - **Link Validation**: Validates URLs for proper `http://` or `https://` protocols and enforces a 2048-character limit.
+  - **Format Selector**: Radio toggle for Video (MP4) and Audio (MP3).
+  - **Activity Area**: Structured download activity list with empty state, ready for Phase 7 execution.
+  - **Responsible Use Notice**: "Use only for content you own or have permission to download" prominently displayed.
 - **Toolbar Popup**: Toggle widget visibility, reset widget position, or test the alarm sound immediately via the "Test Alarm Sound (3s)" button.
 
 ## Architecture
