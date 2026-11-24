@@ -94,11 +94,14 @@ function getAudioElement() {
 }
 
 /**
- * Starts alarm sound playback.
+ * Starts alarm sound playback with volume control.
+ * @param {number} [volume=0.8] Volume in range 0.1 to 1.0
  */
-function playAlarm() {
+function playAlarm(volume = 0.8) {
   try {
     const audio = getAudioElement();
+    const clampedVolume = Math.max(0.1, Math.min(1.0, typeof volume === 'number' ? volume : 0.8));
+    audio.volume = clampedVolume;
     audio.currentTime = 0;
     const playPromise = audio.play();
     if (playPromise !== undefined) {
@@ -140,7 +143,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === MESSAGES.AUDIO_PLAY_ALARM) {
-    playAlarm();
+    playAlarm(message.volume ?? 0.8);
     sendResponse({ ok: true });
     return false;
   }

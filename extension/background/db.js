@@ -812,3 +812,251 @@ export async function clearNotes(alsoDeletePinned = false) {
     };
   });
 }
+
+/**
+ * Deletes unpinned notes older than the specified retention days.
+ * Pinned notes are NEVER deleted.
+ * @param {number} days Retention cutoff in days (0 or less skips cleanup).
+ * @returns {Promise<{ count: number, deletedNotes: Array<object> }>}
+ */
+export async function deleteOldNotes(days) {
+  if (!days || typeof days !== 'number' || days <= 0) {
+    return { count: 0, deletedNotes: [] };
+  }
+
+  const db = await openDB();
+  const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+
+  return new Promise((resolve, reject) => {
+    const deletedNotes = [];
+    const tx = db.transaction('notes', 'readwrite');
+    const store = tx.objectStore('notes');
+    const cursorReq = store.openCursor();
+
+    cursorReq.onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (cursor) {
+        const record = cursor.value;
+        // Pinned notes are never deleted. Only unpinned older than cutoff.
+        if (!record.pinned && (record.createdAt || 0) < cutoff) {
+          deletedNotes.push(sanitizeNote(record));
+          cursor.delete();
+        }
+        cursor.continue();
+      }
+    };
+
+    cursorReq.onerror = () => {
+      console.error('[KCN DB] Cursor error during auto-delete maintenance:', cursorReq.error);
+      reject(new Error(`Notes auto-delete scan failed: ${cursorReq.error?.message}`));
+    };
+
+    tx.oncomplete = () => {
+      resolve({ count: deletedNotes.length, deletedNotes });
+    };
+
+    tx.onerror = () => {
+      console.error('[KCN DB] Transaction error in deleteOldNotes:', tx.error);
+      reject(new Error(`Delete old notes transaction failed: ${tx.error?.message}`));
+    };
+
+    tx.onabort = () => {
+      reject(new Error(`Delete old notes transaction aborted: ${tx.error?.message || 'Aborted'}`));
+    };
+  });
+}
+
+/**
+ * Imports todos and text notes from a backup payload.
+ * Supports 'merge' (skips existing IDs) and 'replace' (clears stores before importing).
+ * Todos whose remindAt is already in the past receive reminded=true so they do not ring.
+ * @param {object} param0 
+ * @param {Array<object>} param0.todos 
+ * @param {Array<object>} param0.notes 
+ * @param {'merge'|'replace'} [mode='merge'] 
+ * @returns {Promise<{ importedTodos: number, importedNotes: number }>}
+ */
+export async function importBackupData({ todos = [], notes = [] }, mode = 'merge') {
+  const db = await openDB();
+  const now = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['todos', 'notes'], 'readwrite');
+    const todoStore = tx.objectStore('todos');
+    const noteStore = tx.objectStore('notes');
+
+    let importedTodos = 0;
+    let importedNotes = 0;
+
+    if (mode === 'replace') {
+      todoStore.clear();
+      noteStore.clear();
+    }
+
+    // Read existing IDs if in merge mode
+    const todoReq = todoStore.getAllKeys();
+    const noteReq = noteStore.getAllKeys();
+
+    tx.oncomplete = () => {
+      resolve({ importedTodos, importedNotes });
+    };
+
+    tx.onerror = () => {
+      console.error('[KCN DB] Transaction error during backup import:', tx.error);
+      reject(new Error(`Import transaction failed: ${tx.error?.message}`));
+    };
+
+    tx.onabort = () => {
+      reject(new Error(`Import transaction aborted: ${tx.error?.message || 'Aborted'}`));
+    };
+
+    // Chain processing once keys are read
+    let existingTodoKeys = new Set();
+    let existingNoteKeys = new Set();
+
+    let keysRead = 0;
+    function proceed() {
+      keysRead++;
+      if (keysRead < 2) return;
+
+      // 1. Process Todos
+      for (const raw of todos) {
+        if (!raw || typeof raw !== 'object' || !raw.title) continue;
+        const id = raw.id || crypto.randomUUID();
+        if (mode === 'merge' && existingTodoKeys.has(id)) continue;
+
+        const hasReminder = typeof raw.remindAt === 'number' && !isNaN(raw.remindAt) && raw.remindAt > 0;
+        const isPastReminder = hasReminder && raw.remindAt <= now;
+
+        const record = {
+          id,
+          title: String(raw.title).trim().slice(0, 200),
+          done: Boolean(raw.done),
+          createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : now,
+          updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : now,
+          remindAt: hasReminder ? raw.remindAt : null,
+          reminded: isPastReminder ? true : Boolean(raw.reminded),
+          snoozedUntil: typeof raw.snoozedUntil === 'number' ? raw.snoozedUntil : null,
+          preReminded: isPastReminder ? true : Boolean(raw.preReminded),
+          ringing: false,
+          ringCount: typeof raw.ringCount === 'number' ? raw.ringCount : 0,
+          lastRingAt: typeof raw.lastRingAt === 'number' ? raw.lastRingAt : null
+        };
+
+        todoStore.put(record);
+        existingTodoKeys.add(id);
+        importedTodos++;
+      }
+
+      // 2. Process Notes (text notes only from backup)
+      for (const raw of notes) {
+        if (!raw || typeof raw !== 'object') continue;
+        const id = raw.id || crypto.randomUUID();
+        if (mode === 'merge' && existingNoteKeys.has(id)) continue;
+
+        const record = {
+          id,
+          kind: 'text',
+          text: String(raw.text || '').slice(0, 20000),
+          blob: null,
+          mimeType: 'text/plain',
+          thumb: null,
+          fileName: null,
+          size: typeof raw.size === 'number' ? raw.size : (raw.text || '').length,
+          createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : now,
+          updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : now,
+          pinned: Boolean(raw.pinned)
+        };
+
+        noteStore.put(record);
+        existingNoteKeys.add(id);
+        importedNotes++;
+      }
+    }
+
+    todoReq.onsuccess = () => {
+      existingTodoKeys = new Set(todoReq.result || []);
+      proceed();
+    };
+    todoReq.onerror = () => reject(new Error('Failed to read todo keys'));
+
+    noteReq.onsuccess = () => {
+      existingNoteKeys = new Set(noteReq.result || []);
+      proceed();
+    };
+    noteReq.onerror = () => reject(new Error('Failed to read note keys'));
+  });
+}
+
+/**
+ * Retrieves the history of recent downloads (up to 20, newest first).
+ * @returns {Promise<Array<object>>}
+ */
+export async function getDownloads() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('downloads', 'readonly');
+    const store = tx.objectStore('downloads');
+    const req = store.getAll();
+
+    req.onsuccess = () => {
+      const list = req.result || [];
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      resolve(list.slice(0, 20));
+    };
+
+    req.onerror = () => {
+      console.error('[KCN DB] Failed to list downloads:', req.error);
+      reject(new Error(`Failed to list downloads: ${req.error?.message}`));
+    };
+  });
+}
+
+/**
+ * Adds or updates a download record.
+ * @param {object} item 
+ * @returns {Promise<object>}
+ */
+export async function saveDownload(item) {
+  if (!item || !item.id) throw new Error('Download item must have an id');
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('downloads', 'readwrite');
+    const store = tx.objectStore('downloads');
+
+    const record = {
+      id: item.id,
+      url: item.url || '',
+      type: item.type === 'audio' ? 'audio' : 'video',
+      state: item.state || 'queued',
+      progress: typeof item.progress === 'number' ? item.progress : 0,
+      filename: item.filename || null,
+      error: item.error || null,
+      createdAt: item.createdAt || Date.now(),
+      updatedAt: Date.now()
+    };
+
+    const req = store.put(record);
+    req.onerror = () => reject(new Error(`Failed to save download: ${req.error?.message}`));
+
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = () => reject(new Error(`Transaction failed saving download: ${tx.error?.message}`));
+  });
+}
+
+/**
+ * Clears download history.
+ * @returns {Promise<{ ok: boolean }>}
+ */
+export async function clearDownloads() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('downloads', 'readwrite');
+    const store = tx.objectStore('downloads');
+    const req = store.clear();
+
+    req.onerror = () => reject(new Error(`Failed to clear downloads: ${req.error?.message}`));
+    tx.oncomplete = () => resolve({ ok: true });
+    tx.onerror = () => reject(new Error(`Transaction failed clearing downloads: ${tx.error?.message}`));
+  });
+}

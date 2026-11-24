@@ -1,7 +1,8 @@
 // © 2026 Kushal Parajuli
 
 import { MESSAGES } from '../shared/messages.js';
-import { PRE_ALERT_MIN, RING_SECONDS, REPEAT_MINUTES, MAX_REPEATS, SNOOZE_MINUTES, MIN_LEAD_SECONDS } from '../shared/constants.js';
+import { MIN_LEAD_SECONDS } from '../shared/constants.js';
+import { getSettings } from '../shared/settings.js';
 import * as db from './db.js';
 
 const OFFSCREEN_PATH = 'offscreen/offscreen.html';
@@ -63,16 +64,22 @@ async function ensureOffscreenDocument() {
 
 /**
  * Sends a command to play sound in the offscreen document if enabled.
+ * @param {number|null} [volumePercent=null] Optional volume override (10-100)
  */
-async function playSound() {
+async function playSound(volumePercent = null) {
   try {
-    const settings = await chrome.storage.local.get({ soundEnabled: true });
+    const settings = await getSettings();
     if (!settings.soundEnabled) return;
+
+    const vol = typeof volumePercent === 'number'
+      ? Math.max(0.1, Math.min(1.0, volumePercent / 100))
+      : (settings.alarmVolume / 100);
 
     await ensureOffscreenDocument();
     chrome.runtime.sendMessage({
       target: 'offscreen',
-      type: MESSAGES.AUDIO_PLAY_ALARM
+      type: MESSAGES.AUDIO_PLAY_ALARM,
+      volume: vol
     }).catch((err) => {
       console.error('[KCN Reminders] Failed to dispatch play audio to offscreen:', err);
     });
@@ -116,7 +123,8 @@ export async function testSound() {
       clearTimeout(testSoundTimer);
       testSoundTimer = null;
     }
-    await playSound();
+    const settings = await getSettings();
+    await playSound(settings.alarmVolume);
     testSoundTimer = setTimeout(async () => {
       await stopSound(true);
       testSoundTimer = null;
@@ -208,10 +216,14 @@ export async function scheduleReminder(todo) {
   // Exact alarm at remindAt
   chrome.alarms.create(`todo:${todo.id}`, { when: todo.remindAt });
 
-  // 5-minute pre-alert (only if reminder is at least 5 minutes away)
-  const preWhen = todo.remindAt - (PRE_ALERT_MIN * 60 * 1000);
-  if (preWhen > now + (MIN_LEAD_SECONDS * 1000) && !todo.preReminded) {
-    chrome.alarms.create(`pre:${todo.id}`, { when: preWhen });
+  const settings = await getSettings();
+
+  // Pre-alert (only if preAlertMinutes > 0 and reminder is far enough away)
+  if (settings.preAlertMinutes > 0 && !todo.preReminded) {
+    const preWhen = todo.remindAt - (settings.preAlertMinutes * 60 * 1000);
+    if (preWhen > now + (MIN_LEAD_SECONDS * 1000)) {
+      chrome.alarms.create(`pre:${todo.id}`, { when: preWhen });
+    }
   }
 }
 
@@ -262,6 +274,7 @@ export async function startRinging(todoId, isMissed = false) {
       return;
     }
 
+    const settings = await getSettings();
     const newRingCount = (todo.ringCount || 0) + 1;
     const now = Date.now();
 
@@ -272,14 +285,14 @@ export async function startRinging(todoId, isMissed = false) {
       reminded: true
     });
 
-    // Schedule stop sound in 60s
-    chrome.alarms.create(`stop:${todoId}`, { when: now + (RING_SECONDS * 1000) });
+    // Schedule stop sound in ringSeconds
+    chrome.alarms.create(`stop:${todoId}`, { when: now + (settings.ringSeconds * 1000) });
 
-    // Schedule next repeat in 5 min
-    chrome.alarms.create(`repeat:${todoId}`, { when: now + (REPEAT_MINUTES * 60 * 1000) });
+    // Schedule next repeat in repeatMinutes
+    chrome.alarms.create(`repeat:${todoId}`, { when: now + (settings.repeatMinutes * 60 * 1000) });
 
     // Play synthetic sound
-    await playSound();
+    await playSound(settings.alarmVolume);
 
     // Broadcast ALARM_RINGING to all tabs
     broadcast({
@@ -331,7 +344,8 @@ async function handleRepeatRing(todoId) {
       return;
     }
 
-    if ((todo.ringCount || 0) < MAX_REPEATS) {
+    const settings = await getSettings();
+    if ((todo.ringCount || 0) < settings.maxRepeats) {
       // Ring again
       const newRingCount = (todo.ringCount || 0) + 1;
       const now = Date.now();
@@ -341,10 +355,10 @@ async function handleRepeatRing(todoId) {
         lastRingAt: now
       });
 
-      chrome.alarms.create(`stop:${todoId}`, { when: now + (RING_SECONDS * 1000) });
-      chrome.alarms.create(`repeat:${todoId}`, { when: now + (REPEAT_MINUTES * 60 * 1000) });
+      chrome.alarms.create(`stop:${todoId}`, { when: now + (settings.ringSeconds * 1000) });
+      chrome.alarms.create(`repeat:${todoId}`, { when: now + (settings.repeatMinutes * 60 * 1000) });
 
-      await playSound();
+      await playSound(settings.alarmVolume);
 
       broadcast({
         type: MESSAGES.ALARM_RINGING,
@@ -354,7 +368,7 @@ async function handleRepeatRing(todoId) {
         }
       });
     } else {
-      // Reached MAX_REPEATS: stop sound but keep banner
+      // Reached maxRepeats: stop sound but keep banner
       await stopSound(true);
     }
   } catch (err) {
@@ -385,20 +399,25 @@ export async function stopAlarm(todoId) {
 }
 
 /**
- * Snoozes an active alarm for 5 minutes.
+ * Snoozes an active alarm.
  * @param {string} todoId 
+ * @param {number|null} [customMinutes=null]
  */
-export async function snoozeAlarm(todoId) {
+export async function snoozeAlarm(todoId, customMinutes = null) {
   try {
+    const settings = await getSettings();
+    const minutes = (typeof customMinutes === 'number' && customMinutes > 0)
+      ? customMinutes
+      : settings.snoozeMinutes;
     const now = Date.now();
-    const snoozeTime = now + (SNOOZE_MINUTES * 60 * 1000);
+    const snoozeTime = now + (minutes * 60 * 1000);
 
     await db.updateTodo(todoId, {
       ringing: false,
       snoozedUntil: snoozeTime,
       remindAt: snoozeTime,
       reminded: false,
-      preReminded: true, // No pre-alert for 5m snooze
+      preReminded: true, // No pre-alert for snooze
       ringCount: 0
     });
 
@@ -417,6 +436,22 @@ export async function snoozeAlarm(todoId) {
     await refreshBadge();
   } catch (err) {
     console.error('[KCN Reminders] Failed to snooze alarm:', err);
+  }
+}
+
+/**
+ * Re-synchronizes pending reminder alarms when preAlertMinutes or settings change.
+ */
+export async function resyncAllReminders() {
+  try {
+    const todos = await db.getTodos();
+    for (const todo of todos) {
+      if (!todo.done && hasValidReminder(todo) && !todo.ringing) {
+        await scheduleReminder(todo);
+      }
+    }
+  } catch (err) {
+    console.error('[KCN Reminders] Failed to re-sync all reminders:', err);
   }
 }
 
@@ -489,40 +524,46 @@ export async function rehydrateAllReminders() {
 }
 
 // Global Chrome Alarms Listener
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  const name = alarm.name;
-  if (!name) return;
+if (typeof chrome !== 'undefined' && chrome.alarms?.onAlarm?.addListener) {
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    const name = alarm.name;
+    if (!name) return;
 
-  if (name.startsWith('todo:')) {
-    const id = name.slice(5);
-    await startRinging(id, false);
-  } else if (name.startsWith('pre:')) {
-    const id = name.slice(4);
-    await handlePreAlert(id);
-  } else if (name.startsWith('stop:')) {
-    const id = name.slice(5);
-    await handleStopSound(id);
-  } else if (name.startsWith('repeat:')) {
-    const id = name.slice(7);
-    await handleRepeatRing(id);
-  }
-});
+    if (name.startsWith('todo:')) {
+      const id = name.slice(5);
+      await startRinging(id, false);
+    } else if (name.startsWith('pre:')) {
+      const id = name.slice(4);
+      await handlePreAlert(id);
+    } else if (name.startsWith('stop:')) {
+      const id = name.slice(5);
+      await handleStopSound(id);
+    } else if (name.startsWith('repeat:')) {
+      const id = name.slice(7);
+      await handleRepeatRing(id);
+    }
+  });
+}
 
 // Chrome Notifications Button Click Listener
-chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
-  if (notificationId.startsWith('alarm:')) {
-    const todoId = notificationId.slice(6);
-    if (buttonIndex === 0) {
-      await snoozeAlarm(todoId);
-    } else if (buttonIndex === 1) {
-      await markDoneAlarm(todoId);
+if (typeof chrome !== 'undefined' && chrome.notifications?.onButtonClicked?.addListener) {
+  chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
+    if (notificationId.startsWith('alarm:')) {
+      const todoId = notificationId.slice(6);
+      if (buttonIndex === 0) {
+        await snoozeAlarm(todoId);
+      } else if (buttonIndex === 1) {
+        await markDoneAlarm(todoId);
+      }
     }
-  }
-});
+  });
+}
 
 // Chrome Notifications Closed Listener (stop audio on notification dismissal)
-chrome.notifications.onClosed.addListener(async (notificationId) => {
-  if (notificationId.startsWith('alarm:')) {
-    await stopSound(false);
-  }
-});
+if (typeof chrome !== 'undefined' && chrome.notifications?.onClosed?.addListener) {
+  chrome.notifications.onClosed.addListener(async (notificationId) => {
+    if (notificationId.startsWith('alarm:')) {
+      await stopSound(false);
+    }
+  });
+}

@@ -404,9 +404,9 @@ Phase 3: Reminders
 Phase 4: Notes tab
 • Text paste, image paste, drag and drop, pinning, search, delete, size limit, Copy/Download image.
 • Done when: a screenshot pasted with Ctrl+V appears as a card and survives a browser restart; an 11 MB image is refused with a friendly message.
-Phase 5: Settings and polish
+Phase 5: Settings and polish [COMPLETE]
 • Settings panel, themes, opacity, sound toggle, snooze length, JSON export/import, popup fallback page.
-• Done when: all settings persist and apply live, and export then import restores todos and text notes.
+• Done when: all settings persist and apply live, and export then import restores todos and text notes. Complete: unified settings schema, clamping, dynamic reminder parameters, daily maintenance auto-delete, and full JSON round-trip tests.
 Phase 6: Downloader UI and helper skeleton
 • Downloader tab UI with the status indicator, Python helper with /ping, token and CORS rules, helper/README.md.
 • Done when: the tab shows Helper online when server.py is running and offline when stopped, and requests without the token get 401.

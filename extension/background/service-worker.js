@@ -2,24 +2,10 @@
 
 import { MESSAGES, createResponse } from '../shared/messages.js';
 import { dataUrlToBlob, blobToDataUrl } from '../shared/utils.js';
+import { getSettings, saveSettings, exportSettingsData, DEFAULT_SETTINGS } from '../shared/settings.js';
 import * as db from './db.js';
 import * as reminders from './reminders.js';
 import * as helperClient from './helper-client.js';
-
-/**
- * Default user settings.
- */
-const DEFAULT_SETTINGS = {
-  widgetEnabled: true,
-  widgetPosition: { edge: 'right', top: 120 },
-  widgetOpacity: 0.35,
-  theme: 'auto',
-  soundEnabled: true,
-  helperPort: 8765,
-  helperToken: '',
-  lastActiveTab: 'todo',
-  notesAutoDeleteDays: 0
-};
 
 /**
  * Injects the content script into all open tabs matching http, https, or file schemes.
@@ -73,24 +59,33 @@ async function broadcastToAllTabs(message) {
 }
 
 /**
+ * Runs daily maintenance (purging unpinned notes older than notesAutoDeleteDays).
+ */
+export async function runMaintenance() {
+  try {
+    const settings = await getSettings();
+    if (settings.notesAutoDeleteDays > 0) {
+      const res = await db.deleteOldNotes(settings.notesAutoDeleteDays);
+      if (res.count > 0) {
+        broadcastToAllTabs({ type: MESSAGES.NOTES_CHANGED });
+      }
+    }
+    await saveSettings({ lastMaintenanceAt: Date.now() });
+  } catch (err) {
+    console.error('[KCN Service Worker] Maintenance error:', err);
+  }
+}
+
+/**
  * On installed lifecycle event.
  */
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log('[KCN Service Worker] Installed. Reason:', details.reason);
 
   try {
-    const existing = await chrome.storage.local.get(null);
-    const updates = {};
-    for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
-      if (existing[key] === undefined) {
-        updates[key] = value;
-      }
-    }
-    if (Object.keys(updates).length > 0) {
-      await chrome.storage.local.set(updates);
-    }
+    await getSettings();
   } catch (err) {
-    console.error('[KCN Service Worker] Failed to initialize default settings:', err);
+    console.error('[KCN Service Worker] Failed to initialize settings:', err);
   }
 
   // Pre-open DB and rehydrate reminder alarms
@@ -99,6 +94,14 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     await reminders.rehydrateAllReminders();
   } catch (dbErr) {
     console.error('[KCN Service Worker] Initialization error on install:', dbErr);
+  }
+
+  // Schedule daily maintenance alarm (every 24 hours)
+  try {
+    chrome.alarms.create('maintenance', { periodInMinutes: 1440 });
+    await runMaintenance();
+  } catch (alarmErr) {
+    console.error('[KCN Service Worker] Failed to schedule maintenance alarm:', alarmErr);
   }
 
   // Inject into all already-open normal tabs
@@ -113,11 +116,36 @@ chrome.runtime.onStartup.addListener(async () => {
   try {
     await db.openDB();
     await reminders.rehydrateAllReminders();
+    await runMaintenance();
   } catch (dbErr) {
     console.error('[KCN Service Worker] Initialization error on startup:', dbErr);
   }
   await injectWidgetIntoAllTabs();
 });
+
+// Maintenance Alarm Listener
+if (typeof chrome !== 'undefined' && chrome.alarms?.onAlarm?.addListener) {
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === 'maintenance') {
+      await runMaintenance();
+    }
+  });
+}
+
+// Settings live change listener
+if (typeof chrome !== 'undefined' && chrome.storage?.onChanged?.addListener) {
+  chrome.storage.onChanged.addListener(async (changes, area) => {
+    if (area !== 'local') return;
+    if (changes.settings) {
+      const oldSettings = changes.settings.oldValue;
+      const newSettings = changes.settings.newValue;
+      // If preAlertMinutes changed, re-sync alarms
+      if (oldSettings?.preAlertMinutes !== newSettings?.preAlertMinutes) {
+        await reminders.resyncAllReminders();
+      }
+    }
+  });
+}
 
 /**
  * Central message router.
@@ -333,9 +361,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       return true;
 
-    // Settings
+    // Settings (Phase 5)
     case MESSAGES.SETTINGS_GET:
-      chrome.storage.local.get(null)
+      getSettings()
         .then((settings) => sendResponse(createResponse(true, settings)))
         .catch((err) => {
           console.error('[KCN Service Worker] Failed to get settings:', err);
@@ -344,8 +372,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
 
     case MESSAGES.SETTINGS_SET:
-      chrome.storage.local.set(payload || {})
-        .then(() => sendResponse(createResponse(true, payload)))
+      saveSettings(payload?.settings || payload || {})
+        .then((saved) => {
+          sendResponse(createResponse(true, saved));
+          broadcastToAllTabs({ type: 'SETTINGS_CHANGED', payload: saved });
+        })
         .catch((err) => {
           console.error('[KCN Service Worker] Failed to save settings:', err);
           sendResponse(createResponse(false, null, err.message));
@@ -353,49 +384,78 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
 
     case MESSAGES.SETTINGS_BACKUP_EXPORT:
-      Promise.all([db.getTodos(), db.getNotes()])
-        .then(([todos, notes]) => {
+      (async () => {
+        try {
+          const todos = await db.getTodos();
+          const allNotes = await db.getNotes();
+          const textNotes = allNotes.filter((n) => n.kind === 'text');
+          const settings = await getSettings();
           const backup = {
-            app: 'kam-chai-nabirsa',
-            version: 1,
-            exportedAt: Date.now(),
+            app: 'Kam Chai Nabirsa',
+            schemaVersion: 1,
+            exportedAt: new Date().toISOString(),
             todos,
-            notes
+            notes: textNotes,
+            settings: exportSettingsData(settings)
           };
           sendResponse(createResponse(true, backup));
-        })
-        .catch((err) => {
+        } catch (err) {
           console.error('[KCN Service Worker] Backup export failed:', err);
           sendResponse(createResponse(false, null, err.message));
-        });
+        }
+      })();
       return true;
 
     case MESSAGES.SETTINGS_BACKUP_IMPORT:
       (async () => {
         try {
-          const { backup } = payload || {};
+          const backup = payload?.backup;
           if (!backup || typeof backup !== 'object') {
-            sendResponse(createResponse(false, null, 'Invalid backup format'));
+            sendResponse(createResponse(false, null, 'Invalid backup data format'));
             return;
           }
-          const { todos = [], notes = [] } = backup;
-          for (const t of todos) {
-            try {
-              if (t.title) {
-                await db.addTodo({ title: t.title, remindAt: t.remindAt || null });
-              }
-            } catch (_) {}
+
+          // Strict validation
+          if (backup.app !== 'Kam Chai Nabirsa' || backup.schemaVersion !== 1) {
+            sendResponse(createResponse(false, null, 'Unrecognized backup application name or unsupported schemaVersion'));
+            return;
           }
-          for (const n of notes) {
-            try {
-              if (n.kind === 'text' && n.text) {
-                await db.addNote({ kind: 'text', text: n.text, pinned: Boolean(n.pinned) });
-              }
-            } catch (_) {}
+
+          if (!Array.isArray(backup.todos) || !Array.isArray(backup.notes)) {
+            sendResponse(createResponse(false, null, 'Invalid backup payload: todos and notes must be arrays'));
+            return;
           }
+
+          // 20 MB size cap check
+          const jsonStr = JSON.stringify(backup);
+          if (jsonStr.length > 20 * 1024 * 1024) {
+            sendResponse(createResponse(false, null, 'Backup exceeds 20 MB size limit'));
+            return;
+          }
+
+          const mode = payload?.mode === 'replace' ? 'replace' : 'merge';
+          const importResult = await db.importBackupData({
+            todos: backup.todos,
+            notes: backup.notes
+          }, mode);
+
+          // Import settings if present, strictly ignoring helperToken
+          if (backup.settings && typeof backup.settings === 'object') {
+            const settingsToImport = { ...backup.settings };
+            delete settingsToImport.helperToken;
+            await saveSettings(settingsToImport);
+          }
+
+          // Re-sync reminder alarms and badge
+          await reminders.resyncAllReminders();
+          await reminders.refreshBadge();
+
+          // Broadcast updates to all open tabs
           broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
           broadcastToAllTabs({ type: MESSAGES.NOTES_CHANGED });
-          sendResponse(createResponse(true, { importedTodos: todos.length, importedNotes: notes.length }));
+          broadcastToAllTabs({ type: 'SETTINGS_CHANGED' });
+
+          sendResponse(createResponse(true, importResult));
         } catch (err) {
           console.error('[KCN Service Worker] Backup import failed:', err);
           sendResponse(createResponse(false, null, err.message));

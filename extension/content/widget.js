@@ -196,7 +196,7 @@
         </div>
 
         <!-- Settings Overlay View (Phase 5) -->
-        <div class="kcn-settings-view kcn-hidden" id="kcn-settings-view">
+        <div class="kcn-settings-view kcn-hidden" id="kcn-settings-view" role="dialog" aria-modal="false" aria-label="Settings">
           <div class="kcn-settings-header">
             <span class="kcn-settings-title">Settings</span>
             <button class="kcn-icon-btn" id="kcn-settings-close-btn" title="Close settings" aria-label="Close settings">
@@ -207,75 +207,167 @@
             </button>
           </div>
           <div class="kcn-settings-scroll">
-            <!-- Theme -->
+            <!-- Appearance Section -->
             <div class="kcn-settings-group">
-              <label class="kcn-settings-label" for="kcn-setting-theme">Theme</label>
-              <select class="kcn-settings-select" id="kcn-setting-theme">
-                <option value="auto">System Default (Auto)</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
-            </div>
-
-            <!-- Idle Opacity -->
-            <div class="kcn-settings-group">
-              <div class="kcn-settings-label-row">
-                <label class="kcn-settings-label" for="kcn-setting-opacity">Widget Idle Opacity</label>
-                <span class="kcn-settings-val" id="kcn-opacity-val">35%</span>
+              <div class="kcn-settings-group-title">Appearance</div>
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-theme">Theme</label>
+                <select class="kcn-settings-select" id="kcn-setting-theme">
+                  <option value="auto">System Default (Auto)</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
               </div>
-              <input type="range" class="kcn-settings-range" id="kcn-setting-opacity" min="0.2" max="1" step="0.05" value="0.35">
+
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-opacity">Idle Opacity (<span id="kcn-opacity-val">35%</span>)</label>
+                <input type="range" class="kcn-settings-range" id="kcn-setting-opacity" min="20" max="100" step="5" value="35">
+              </div>
+
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-edgeside">Screen Edge</label>
+                <select class="kcn-settings-select" id="kcn-setting-edgeside">
+                  <option value="right">Right</option>
+                  <option value="left">Left</option>
+                </select>
+              </div>
+
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-widgetsize">Panel Size</label>
+                <select class="kcn-settings-select" id="kcn-setting-widgetsize">
+                  <option value="small">Small (300 × 400)</option>
+                  <option value="medium">Medium (340 × 460)</option>
+                  <option value="large">Large (380 × 520)</option>
+                </select>
+              </div>
+
+              <button type="button" class="kcn-settings-btn" id="kcn-reset-pos-btn">Reset Widget Position</button>
             </div>
 
-            <!-- Reminder Sound -->
+            <!-- Reminders & Alarms Section -->
             <div class="kcn-settings-group">
+              <div class="kcn-settings-group-title">Reminders & Alarms</div>
               <label class="kcn-settings-checkbox-row">
                 <input type="checkbox" id="kcn-setting-sound" checked>
-                <span>Enable reminder alarm sound</span>
+                <span>Play sound when reminder rings</span>
               </label>
+
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-volume">Alarm Volume (<span id="kcn-volume-val">80%</span>)</label>
+                <input type="range" class="kcn-settings-range" id="kcn-setting-volume" min="10" max="100" step="5" value="80">
+              </div>
+
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-ringsec">Ring Duration</label>
+                <select class="kcn-settings-select" id="kcn-setting-ringsec">
+                  <option value="30">30 seconds</option>
+                  <option value="60">60 seconds (1 min)</option>
+                  <option value="120">120 seconds (2 min)</option>
+                  <option value="300">300 seconds (5 min)</option>
+                </select>
+              </div>
+
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-repeatmin">Repeat Every</label>
+                <select class="kcn-settings-select" id="kcn-setting-repeatmin">
+                  <option value="2">2 minutes</option>
+                  <option value="5">5 minutes</option>
+                  <option value="10">10 minutes</option>
+                  <option value="15">15 minutes</option>
+                </select>
+              </div>
+
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-maxrepeats">Max Repeats</label>
+                <select class="kcn-settings-select" id="kcn-setting-maxrepeats">
+                  <option value="3">3 times</option>
+                  <option value="5">5 times</option>
+                  <option value="10">10 times</option>
+                  <option value="20">20 times</option>
+                </select>
+              </div>
+
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-snooze">Default Snooze</label>
+                <select class="kcn-settings-select" id="kcn-setting-snooze">
+                  <option value="5">5 minutes</option>
+                  <option value="10">10 minutes</option>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                </select>
+              </div>
+
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-prealert">Pre-Alert Heads Up</label>
+                <select class="kcn-settings-select" id="kcn-setting-prealert">
+                  <option value="0">Off</option>
+                  <option value="5">5 minutes before</option>
+                  <option value="10">10 minutes before</option>
+                  <option value="15">15 minutes before</option>
+                </select>
+              </div>
+
+              <button type="button" class="kcn-settings-btn" id="kcn-test-sound-btn">Test Alarm Sound (3s)</button>
             </div>
 
-            <!-- Snooze Duration -->
+            <!-- Notes Retention Section -->
             <div class="kcn-settings-group">
-              <label class="kcn-settings-label" for="kcn-setting-snooze">Reminder Snooze Duration</label>
-              <select class="kcn-settings-select" id="kcn-setting-snooze">
-                <option value="5">5 minutes</option>
-                <option value="10">10 minutes</option>
-                <option value="15">15 minutes</option>
-              </select>
+              <div class="kcn-settings-group-title">Notes Retention</div>
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-notes-retention">Auto-delete Text Notes</label>
+                <select class="kcn-settings-select" id="kcn-setting-notes-retention">
+                  <option value="0">Never (Off)</option>
+                  <option value="30">Older than 30 days</option>
+                  <option value="60">Older than 60 days</option>
+                  <option value="90">Older than 90 days</option>
+                  <option value="180">Older than 180 days</option>
+                  <option value="365">Older than 365 days</option>
+                </select>
+              </div>
+              <div class="kcn-settings-hint" id="kcn-last-maintenance-info">Last maintenance: Never</div>
+              <div class="kcn-settings-hint">Pinned notes are never auto-deleted. Binary images remain offline.</div>
             </div>
 
-            <!-- Notes Auto-Delete -->
-            <div class="kcn-settings-group">
-              <label class="kcn-settings-label" for="kcn-setting-notes-retention">Auto-delete Notes</label>
-              <select class="kcn-settings-select" id="kcn-setting-notes-retention">
-                <option value="0">Never (Off)</option>
-                <option value="7">Older than 7 days</option>
-                <option value="30">Older than 30 days</option>
-              </select>
-            </div>
-
-            <!-- Local Helper Companion -->
+            <!-- Local Helper Companion Section -->
             <div class="kcn-settings-group kcn-settings-helper-group">
               <div class="kcn-settings-group-title">Local Helper Companion</div>
-              <div class="kcn-settings-subgroup">
-                <label class="kcn-settings-sublabel" for="kcn-setting-helper-port">Port</label>
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-helper-port">Port</label>
                 <input type="number" class="kcn-settings-input" id="kcn-setting-helper-port" value="8765" min="1024" max="65535">
               </div>
-              <div class="kcn-settings-subgroup">
-                <label class="kcn-settings-sublabel" for="kcn-setting-helper-token">Helper Token (from helper/token.txt)</label>
-                <input type="text" class="kcn-settings-input" id="kcn-setting-helper-token" placeholder="Paste 32-char token here">
+              <div class="kcn-settings-row">
+                <label class="kcn-settings-label" for="kcn-setting-helper-token">Auth Token</label>
+                <div class="kcn-input-with-btn">
+                  <input type="password" class="kcn-settings-input" id="kcn-setting-helper-token" placeholder="Paste token from helper/token.txt">
+                  <button type="button" class="kcn-icon-btn" id="kcn-toggle-token-btn" title="Show/hide token" aria-label="Toggle token visibility">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
 
-            <!-- Backup & Restore -->
+            <!-- Backup & Restore Section -->
             <div class="kcn-settings-group">
               <div class="kcn-settings-group-title">Data Backup & Restore</div>
+              <div class="kcn-settings-hint">Backups include all todos, text notes, and settings. Helper tokens and binary images are excluded.</div>
               <div class="kcn-settings-btn-row">
                 <button type="button" class="kcn-settings-btn" id="kcn-backup-export-btn">Export JSON</button>
                 <button type="button" class="kcn-settings-btn" id="kcn-backup-import-btn">Import JSON</button>
-                <input type="file" id="kcn-backup-file-input" accept=".json" hidden>
+                <input type="file" id="kcn-backup-file-input" accept=".json,application/json" hidden>
               </div>
-              <div class="kcn-settings-feedback kcn-hidden" id="kcn-backup-feedback"></div>
+              <button type="button" class="kcn-settings-btn kcn-danger-btn" id="kcn-reset-data-btn">Reset All Local Data</button>
+              <div class="kcn-settings-feedback kcn-hidden" id="kcn-backup-feedback" role="status"></div>
+            </div>
+
+            <!-- About Section -->
+            <div class="kcn-settings-group">
+              <div class="kcn-settings-group-title">About</div>
+              <div class="kcn-settings-hint"><strong>Kam Chai Nabirsa</strong> v0.1.0</div>
+              <div class="kcn-settings-hint">Personal Manifest V3 Productivity Companion</div>
+              <div class="kcn-settings-hint">© 2026 Kushal Parajuli • MIT License</div>
             </div>
           </div>
         </div>
@@ -450,72 +542,196 @@
 
     // Populate & Attach Settings Form Handlers (Phase 5)
     function populateSettingsForm() {
-      chrome.storage.local.get([
-        'theme', 'widgetOpacity', 'soundEnabled', 'snoozeMinutes', 
-        'notesAutoDeleteDays', 'helperPort', 'helperToken'
-      ], (items) => {
+      chrome.runtime.sendMessage({ type: 'SETTINGS_GET' }, (res) => {
+        if (!res?.ok || !res.data) return;
+        const s = res.data;
+
         const themeSel = shadowRoot.getElementById('kcn-setting-theme');
         const opacityRng = shadowRoot.getElementById('kcn-setting-opacity');
         const opacityTxt = shadowRoot.getElementById('kcn-opacity-val');
+        const edgeSel = shadowRoot.getElementById('kcn-setting-edgeside');
+        const sizeSel = shadowRoot.getElementById('kcn-setting-widgetsize');
         const soundChk = shadowRoot.getElementById('kcn-setting-sound');
+        const volRng = shadowRoot.getElementById('kcn-setting-volume');
+        const volTxt = shadowRoot.getElementById('kcn-volume-val');
+        const ringSel = shadowRoot.getElementById('kcn-setting-ringsec');
+        const repeatSel = shadowRoot.getElementById('kcn-setting-repeatmin');
+        const maxRepSel = shadowRoot.getElementById('kcn-setting-maxrepeats');
         const snoozeSel = shadowRoot.getElementById('kcn-setting-snooze');
+        const preAlertSel = shadowRoot.getElementById('kcn-setting-prealert');
         const notesRetSel = shadowRoot.getElementById('kcn-setting-notes-retention');
+        const maintInfo = shadowRoot.getElementById('kcn-last-maintenance-info');
         const helperPortInp = shadowRoot.getElementById('kcn-setting-helper-port');
         const helperTokenInp = shadowRoot.getElementById('kcn-setting-helper-token');
 
-        if (themeSel) themeSel.value = items.theme || 'auto';
+        if (themeSel) themeSel.value = s.theme || 'auto';
         if (opacityRng) {
-          const op = typeof items.widgetOpacity === 'number' ? items.widgetOpacity : 0.35;
-          opacityRng.value = op;
-          if (opacityTxt) opacityTxt.textContent = `${Math.round(op * 100)}%`;
+          opacityRng.value = s.widgetOpacity || 35;
+          if (opacityTxt) opacityTxt.textContent = `${s.widgetOpacity || 35}%`;
         }
-        if (soundChk) soundChk.checked = items.soundEnabled !== false;
-        if (snoozeSel) snoozeSel.value = String(items.snoozeMinutes || 5);
-        if (notesRetSel) notesRetSel.value = String(items.notesAutoDeleteDays || 0);
-        if (helperPortInp) helperPortInp.value = items.helperPort || 8765;
-        if (helperTokenInp) helperTokenInp.value = items.helperToken || '';
+        if (edgeSel) edgeSel.value = s.edgeSide || 'right';
+        if (sizeSel) sizeSel.value = s.widgetSize || 'medium';
+        if (soundChk) soundChk.checked = s.soundEnabled !== false;
+        if (volRng) {
+          volRng.value = s.alarmVolume || 80;
+          if (volTxt) volTxt.textContent = `${s.alarmVolume || 80}%`;
+        }
+        if (ringSel) ringSel.value = String(s.ringSeconds || 60);
+        if (repeatSel) repeatSel.value = String(s.repeatMinutes || 5);
+        if (maxRepSel) maxRepSel.value = String(s.maxRepeats || 10);
+        if (snoozeSel) snoozeSel.value = String(s.snoozeMinutes || 5);
+        if (preAlertSel) preAlertSel.value = String(s.preAlertMinutes !== undefined ? s.preAlertMinutes : 5);
+        if (notesRetSel) notesRetSel.value = String(s.notesAutoDeleteDays || 0);
+
+        if (maintInfo) {
+          if (s.lastMaintenanceAt) {
+            const d = new Date(s.lastMaintenanceAt);
+            maintInfo.textContent = `Last maintenance: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+          } else {
+            maintInfo.textContent = 'Last maintenance: Never';
+          }
+        }
+
+        if (helperPortInp) helperPortInp.value = s.helperPort || 8765;
+        if (helperTokenInp) helperTokenInp.value = s.helperToken || '';
       });
     }
 
+    function saveSettingKey(key, value) {
+      chrome.runtime.sendMessage({
+        type: 'SETTINGS_SET',
+        payload: { settings: { [key]: value } }
+      }, () => {});
+    }
+
+    // Appearance Inputs
     const themeSel = shadowRoot.getElementById('kcn-setting-theme');
     themeSel?.addEventListener('change', () => {
-      chrome.storage.local.set({ theme: themeSel.value });
+      saveSettingKey('theme', themeSel.value);
     });
 
     const opacityRng = shadowRoot.getElementById('kcn-setting-opacity');
     const opacityTxt = shadowRoot.getElementById('kcn-opacity-val');
     opacityRng?.addEventListener('input', () => {
-      const val = parseFloat(opacityRng.value);
-      if (opacityTxt) opacityTxt.textContent = `${Math.round(val * 100)}%`;
-      chrome.storage.local.set({ widgetOpacity: val });
+      const val = parseInt(opacityRng.value, 10);
+      if (opacityTxt) opacityTxt.textContent = `${val}%`;
+      saveSettingKey('widgetOpacity', val);
     });
 
+    const edgeSel = shadowRoot.getElementById('kcn-setting-edgeside');
+    edgeSel?.addEventListener('change', () => {
+      saveSettingKey('edgeSide', edgeSel.value);
+      STATE.edge = edgeSel.value;
+      applyPosition();
+    });
+
+    const sizeSel = shadowRoot.getElementById('kcn-setting-widgetsize');
+    sizeSel?.addEventListener('change', () => {
+      saveSettingKey('widgetSize', sizeSel.value);
+      STATE.size = sizeSel.value;
+      applySize();
+    });
+
+    const resetPosBtn = shadowRoot.getElementById('kcn-reset-pos-btn');
+    resetPosBtn?.addEventListener('click', () => {
+      chrome.storage.local.set({
+        widgetPosition: { edge: 'right', top: 120 }
+      });
+      STATE.edge = 'right';
+      STATE.top = 120;
+      applyPosition();
+      showBackupFeedback('Position reset to default!');
+    });
+
+    // Reminders Inputs
     const soundChk = shadowRoot.getElementById('kcn-setting-sound');
     soundChk?.addEventListener('change', () => {
-      chrome.storage.local.set({ soundEnabled: soundChk.checked });
+      saveSettingKey('soundEnabled', soundChk.checked);
+    });
+
+    const volRng = shadowRoot.getElementById('kcn-setting-volume');
+    const volTxt = shadowRoot.getElementById('kcn-volume-val');
+    volRng?.addEventListener('input', () => {
+      const val = parseInt(volRng.value, 10);
+      if (volTxt) volTxt.textContent = `${val}%`;
+      saveSettingKey('alarmVolume', val);
+    });
+
+    const ringSel = shadowRoot.getElementById('kcn-setting-ringsec');
+    ringSel?.addEventListener('change', () => {
+      saveSettingKey('ringSeconds', parseInt(ringSel.value, 10));
+    });
+
+    const repeatSel = shadowRoot.getElementById('kcn-setting-repeatmin');
+    repeatSel?.addEventListener('change', () => {
+      saveSettingKey('repeatMinutes', parseInt(repeatSel.value, 10));
+    });
+
+    const maxRepSel = shadowRoot.getElementById('kcn-setting-maxrepeats');
+    maxRepSel?.addEventListener('change', () => {
+      saveSettingKey('maxRepeats', parseInt(maxRepSel.value, 10));
     });
 
     const snoozeSel = shadowRoot.getElementById('kcn-setting-snooze');
     snoozeSel?.addEventListener('change', () => {
-      chrome.storage.local.set({ snoozeMinutes: parseInt(snoozeSel.value, 10) });
+      saveSettingKey('snoozeMinutes', parseInt(snoozeSel.value, 10));
     });
 
+    const preAlertSel = shadowRoot.getElementById('kcn-setting-prealert');
+    preAlertSel?.addEventListener('change', () => {
+      saveSettingKey('preAlertMinutes', parseInt(preAlertSel.value, 10));
+    });
+
+    const testSoundBtn = shadowRoot.getElementById('kcn-test-sound-btn');
+    testSoundBtn?.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'TEST_SOUND' });
+      showBackupFeedback('Playing alarm sound for 3s...');
+    });
+
+    // Notes Retention
     const notesRetSel = shadowRoot.getElementById('kcn-setting-notes-retention');
     notesRetSel?.addEventListener('change', () => {
-      chrome.storage.local.set({ notesAutoDeleteDays: parseInt(notesRetSel.value, 10) });
+      saveSettingKey('notesAutoDeleteDays', parseInt(notesRetSel.value, 10));
     });
 
+    // Helper Companion Inputs
     const helperPortInp = shadowRoot.getElementById('kcn-setting-helper-port');
     helperPortInp?.addEventListener('change', () => {
       const p = parseInt(helperPortInp.value, 10) || 8765;
-      chrome.storage.local.set({ helperPort: p });
+      saveSettingKey('helperPort', p);
       downloaderApi?.reload?.();
     });
 
     const helperTokenInp = shadowRoot.getElementById('kcn-setting-helper-token');
     helperTokenInp?.addEventListener('input', () => {
-      chrome.storage.local.set({ helperToken: helperTokenInp.value.trim() });
+      saveSettingKey('helperToken', helperTokenInp.value.trim());
       downloaderApi?.reload?.();
+    });
+
+    const toggleTokenBtn = shadowRoot.getElementById('kcn-toggle-token-btn');
+    toggleTokenBtn?.addEventListener('click', () => {
+      if (!helperTokenInp) return;
+      helperTokenInp.type = helperTokenInp.type === 'password' ? 'text' : 'password';
+    });
+
+    // Reset Data
+    const resetDataBtn = shadowRoot.getElementById('kcn-reset-data-btn');
+    resetDataBtn?.addEventListener('click', () => {
+      const confirmed = window.confirm(
+        'Are you sure you want to reset all local data?\n\nThis will permanently delete all stored todos and notes, reset alarms, and recreate a clean database.'
+      );
+      if (!confirmed) return;
+
+      chrome.runtime.sendMessage({ type: 'DB_RESET' }, (res) => {
+        if (res?.ok) {
+          showBackupFeedback('All local data was reset successfully!');
+          todoApi?.reload?.();
+          notesApi?.reload?.();
+          populateSettingsForm();
+        } else {
+          showBackupFeedback('Failed to reset data: ' + (res?.error || 'Unknown error'), true);
+        }
+      });
     });
 
     // Backup & Restore
@@ -529,13 +745,13 @@
       backupFeedback.textContent = msg;
       backupFeedback.className = `kcn-settings-feedback ${isError ? 'kcn-feedback-error' : 'kcn-feedback-success'}`;
       backupFeedback.classList.remove('kcn-hidden');
-      setTimeout(() => backupFeedback?.classList.add('kcn-hidden'), 4000);
+      setTimeout(() => backupFeedback?.classList.add('kcn-hidden'), 4500);
     }
 
     backupExportBtn?.addEventListener('click', () => {
       chrome.runtime.sendMessage({ type: 'SETTINGS_BACKUP_EXPORT' }, (res) => {
         if (!res?.ok || !res.data) {
-          showBackupFeedback('Failed to export backup', true);
+          showBackupFeedback('Failed to export backup: ' + (res?.error || 'Unknown error'), true);
           return;
         }
         const jsonStr = JSON.stringify(res.data, null, 2);
@@ -560,18 +776,34 @@
     backupFileInput?.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
+
+      if (file.size > 20 * 1024 * 1024) {
+        showBackupFeedback('Backup file exceeds 20 MB size limit', true);
+        e.target.value = '';
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         try {
           const parsed = JSON.parse(reader.result);
-          chrome.runtime.sendMessage({ type: 'SETTINGS_BACKUP_IMPORT', payload: { backup: parsed } }, (res) => {
+          const replace = window.confirm(
+            'Import Mode:\n\nClick OK to REPLACE all current tasks and notes with this backup.\nClick CANCEL to MERGE (keep your current tasks and notes, only adding new ones).'
+          );
+          const mode = replace ? 'replace' : 'merge';
+
+          chrome.runtime.sendMessage({
+            type: 'SETTINGS_BACKUP_IMPORT',
+            payload: { backup: parsed, mode }
+          }, (res) => {
             if (!res?.ok) {
               showBackupFeedback('Failed to import backup: ' + (res?.error || 'Invalid file'), true);
               return;
             }
-            showBackupFeedback(`Imported ${res.data?.importedTodos || 0} tasks & ${res.data?.importedNotes || 0} notes!`);
+            showBackupFeedback(`Imported ${res.data?.importedTodos || 0} tasks & ${res.data?.importedNotes || 0} notes (${mode} mode)!`);
             todoApi?.reload?.();
             notesApi?.reload?.();
+            populateSettingsForm();
           });
         } catch (_) {
           showBackupFeedback('Invalid JSON file format', true);
@@ -582,19 +814,29 @@
     });
 
     // Load Saved Preferences
-    chrome.storage.local.get(['widgetEnabled', 'widgetPosition', 'widgetOpacity', 'theme', 'lastActiveTab'], (items) => {
+    chrome.storage.local.get(['settings', 'widgetEnabled', 'widgetPosition', 'widgetOpacity', 'theme', 'lastActiveTab'], (items) => {
+      const s = items.settings || {};
       if (items.widgetEnabled !== undefined) {
         STATE.enabled = items.widgetEnabled;
       }
       if (items.widgetPosition) {
-        STATE.edge = items.widgetPosition.edge || 'right';
+        STATE.edge = items.widgetPosition.edge || s.edgeSide || 'right';
         STATE.top = typeof items.widgetPosition.top === 'number' ? items.widgetPosition.top : 120;
+      } else if (s.edgeSide) {
+        STATE.edge = s.edgeSide;
       }
-      if (typeof items.widgetOpacity === 'number') {
+      if (typeof s.widgetOpacity === 'number') {
+        STATE.opacity = s.widgetOpacity / 100;
+      } else if (typeof items.widgetOpacity === 'number') {
         STATE.opacity = items.widgetOpacity;
       }
-      if (items.theme) {
+      if (s.theme) {
+        STATE.theme = s.theme;
+      } else if (items.theme) {
         STATE.theme = items.theme;
+      }
+      if (s.widgetSize) {
+        STATE.size = s.widgetSize;
       }
       if (items.lastActiveTab) {
         STATE.activeTab = items.lastActiveTab;
@@ -604,6 +846,7 @@
       applyPosition();
       applyOpacity();
       applyTheme();
+      applySize();
       switchTab(STATE.activeTab);
     });
 
@@ -620,13 +863,25 @@
         STATE.top = changes.widgetPosition.newValue?.top ?? 120;
         applyPosition();
       }
-      if (changes.widgetOpacity) {
-        STATE.opacity = changes.widgetOpacity.newValue;
-        applyOpacity();
-      }
-      if (changes.theme) {
-        STATE.theme = changes.theme.newValue;
-        applyTheme();
+      if (changes.settings) {
+        const s = changes.settings.newValue || {};
+        if (s.theme) {
+          STATE.theme = s.theme;
+          applyTheme();
+        }
+        if (typeof s.widgetOpacity === 'number') {
+          STATE.opacity = s.widgetOpacity / 100;
+          applyOpacity();
+        }
+        if (s.edgeSide) {
+          STATE.edge = s.edgeSide;
+          applyPosition();
+        }
+        if (s.widgetSize) {
+          STATE.size = s.widgetSize;
+          applySize();
+        }
+        populateSettingsForm();
       }
     });
 
@@ -697,6 +952,11 @@
       } else if (STATE.theme === 'dark') {
         host.classList.add('kcn-theme-dark');
       }
+    }
+
+    function applySize() {
+      panel.classList.remove('kcn-size-small', 'kcn-size-medium', 'kcn-size-large');
+      panel.classList.add(`kcn-size-${STATE.size || 'medium'}`);
     }
 
     // Panel Open / Close Actions (CLICK TO OPEN ONLY)

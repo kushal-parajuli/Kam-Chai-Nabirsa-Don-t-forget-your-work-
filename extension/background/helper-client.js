@@ -1,28 +1,37 @@
 // © 2026 Kushal Parajuli
 
+import { getSettings } from '../shared/settings.js';
+
 /**
  * Client module for communicating with the local Python helper server.
  * All HTTP requests to 127.0.0.1 originate exclusively from the background service worker.
  */
 
-const DEFAULT_HELPER_PORT = 8765;
 const REQUEST_TIMEOUT_MS = 3000;
 
 /**
  * Fetches current helper settings from chrome.storage.local.
+ * Reads from the unified `settings` object with backwards-compatible fallback to top-level keys.
  * @returns {Promise<{ port: number, token: string }>}
  */
 async function getHelperConfig() {
   try {
-    const data = await chrome.storage.local.get({
-      helperPort: DEFAULT_HELPER_PORT,
-      helperToken: ''
-    });
-    const port = Number(data.helperPort) || DEFAULT_HELPER_PORT;
-    const token = typeof data.helperToken === 'string' ? data.helperToken.trim() : '';
-    return { port, token };
+    const settings = await getSettings();
+    if (settings && settings.helperToken) {
+      return {
+        port: settings.helperPort || 8765,
+        token: settings.helperToken
+      };
+    }
+
+    // Fallback to top-level keys if present
+    const top = await chrome.storage.local.get({ helperPort: 8765, helperToken: '' });
+    return {
+      port: top.helperPort || settings.helperPort || 8765,
+      token: (top.helperToken || settings.helperToken || '').trim()
+    };
   } catch (_) {
-    return { port: DEFAULT_HELPER_PORT, token: '' };
+    return { port: 8765, token: '' };
   }
 }
 
