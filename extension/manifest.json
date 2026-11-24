@@ -33,7 +33,7 @@
     "tabs"
   ],
   "host_permissions": [
-    "http://127.0.0.1:8765/*",
+    "http://127.0.0.1/*",
     "<all_urls>"
   ],
   "content_scripts": [
@@ -43,6 +43,7 @@
         "content/widget-css.js",
         "content/tabs/todo.js",
         "content/tabs/notes.js",
+        "content/tabs/downloader.js",
         "content/widget.js"
       ],
       "run_at": "document_idle",

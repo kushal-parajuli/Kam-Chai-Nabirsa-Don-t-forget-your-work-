@@ -69,6 +69,7 @@
 
     let todoApi = null;
     let notesApi = null;
+    let downloaderApi = null;
     let currentRingingTodo = null;
 
     // Create Host Element
@@ -107,6 +108,12 @@
             <span class="kcn-title">Kam Chai Nabirsa</span>
           </div>
           <div class="kcn-header-actions">
+            <button class="kcn-icon-btn" id="kcn-settings-btn" title="Settings" aria-label="Open settings">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </button>
             <button class="kcn-icon-btn" id="kcn-pin-btn" title="Pin panel open" aria-label="Pin panel open">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="17" x2="12" y2="22"/>
@@ -188,6 +195,91 @@
           </div>
         </div>
 
+        <!-- Settings Overlay View (Phase 5) -->
+        <div class="kcn-settings-view kcn-hidden" id="kcn-settings-view">
+          <div class="kcn-settings-header">
+            <span class="kcn-settings-title">Settings</span>
+            <button class="kcn-icon-btn" id="kcn-settings-close-btn" title="Close settings" aria-label="Close settings">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <div class="kcn-settings-scroll">
+            <!-- Theme -->
+            <div class="kcn-settings-group">
+              <label class="kcn-settings-label" for="kcn-setting-theme">Theme</label>
+              <select class="kcn-settings-select" id="kcn-setting-theme">
+                <option value="auto">System Default (Auto)</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+
+            <!-- Idle Opacity -->
+            <div class="kcn-settings-group">
+              <div class="kcn-settings-label-row">
+                <label class="kcn-settings-label" for="kcn-setting-opacity">Widget Idle Opacity</label>
+                <span class="kcn-settings-val" id="kcn-opacity-val">35%</span>
+              </div>
+              <input type="range" class="kcn-settings-range" id="kcn-setting-opacity" min="0.2" max="1" step="0.05" value="0.35">
+            </div>
+
+            <!-- Reminder Sound -->
+            <div class="kcn-settings-group">
+              <label class="kcn-settings-checkbox-row">
+                <input type="checkbox" id="kcn-setting-sound" checked>
+                <span>Enable reminder alarm sound</span>
+              </label>
+            </div>
+
+            <!-- Snooze Duration -->
+            <div class="kcn-settings-group">
+              <label class="kcn-settings-label" for="kcn-setting-snooze">Reminder Snooze Duration</label>
+              <select class="kcn-settings-select" id="kcn-setting-snooze">
+                <option value="5">5 minutes</option>
+                <option value="10">10 minutes</option>
+                <option value="15">15 minutes</option>
+              </select>
+            </div>
+
+            <!-- Notes Auto-Delete -->
+            <div class="kcn-settings-group">
+              <label class="kcn-settings-label" for="kcn-setting-notes-retention">Auto-delete Notes</label>
+              <select class="kcn-settings-select" id="kcn-setting-notes-retention">
+                <option value="0">Never (Off)</option>
+                <option value="7">Older than 7 days</option>
+                <option value="30">Older than 30 days</option>
+              </select>
+            </div>
+
+            <!-- Local Helper Companion -->
+            <div class="kcn-settings-group kcn-settings-helper-group">
+              <div class="kcn-settings-group-title">Local Helper Companion</div>
+              <div class="kcn-settings-subgroup">
+                <label class="kcn-settings-sublabel" for="kcn-setting-helper-port">Port</label>
+                <input type="number" class="kcn-settings-input" id="kcn-setting-helper-port" value="8765" min="1024" max="65535">
+              </div>
+              <div class="kcn-settings-subgroup">
+                <label class="kcn-settings-sublabel" for="kcn-setting-helper-token">Helper Token (from helper/token.txt)</label>
+                <input type="text" class="kcn-settings-input" id="kcn-setting-helper-token" placeholder="Paste 32-char token here">
+              </div>
+            </div>
+
+            <!-- Backup & Restore -->
+            <div class="kcn-settings-group">
+              <div class="kcn-settings-group-title">Data Backup & Restore</div>
+              <div class="kcn-settings-btn-row">
+                <button type="button" class="kcn-settings-btn" id="kcn-backup-export-btn">Export JSON</button>
+                <button type="button" class="kcn-settings-btn" id="kcn-backup-import-btn">Import JSON</button>
+                <input type="file" id="kcn-backup-file-input" accept=".json" hidden>
+              </div>
+              <div class="kcn-settings-feedback kcn-hidden" id="kcn-backup-feedback"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Muted Footer Line -->
         <div class="kcn-footer">© 2026 Kushal Parajuli</div>
       </div>
@@ -216,6 +308,10 @@
     const tabPanes = shadowRoot.querySelectorAll('.kcn-tab-pane');
     const todoPane = shadowRoot.querySelector('[data-pane="todo"]');
     const notesPane = shadowRoot.querySelector('[data-pane="notes"]');
+    const downloaderPane = shadowRoot.querySelector('[data-pane="downloader"]');
+    const settingsBtn = shadowRoot.getElementById('kcn-settings-btn');
+    const settingsView = shadowRoot.getElementById('kcn-settings-view');
+    const settingsCloseBtn = shadowRoot.getElementById('kcn-settings-close-btn');
 
     // Alarm elements
     const alarmBanner = shadowRoot.getElementById('kcn-alarm-banner');
@@ -323,6 +419,167 @@
         paneElement: notesPane
       });
     }
+
+    // Settings View Toggle (Phase 5)
+    function openSettings() {
+      settingsView?.classList.remove('kcn-hidden');
+      populateSettingsForm();
+    }
+
+    function closeSettings() {
+      settingsView?.classList.add('kcn-hidden');
+    }
+
+    settingsBtn?.addEventListener('click', () => {
+      if (settingsView?.classList.contains('kcn-hidden')) {
+        openSettings();
+      } else {
+        closeSettings();
+      }
+    });
+
+    settingsCloseBtn?.addEventListener('click', closeSettings);
+
+    // Initialize Downloader Tab Component (Phase 6)
+    if (typeof window.__kcn_initDownloaderTab === 'function') {
+      downloaderApi = window.__kcn_initDownloaderTab({
+        paneElement: downloaderPane,
+        openSettings
+      });
+    }
+
+    // Populate & Attach Settings Form Handlers (Phase 5)
+    function populateSettingsForm() {
+      chrome.storage.local.get([
+        'theme', 'widgetOpacity', 'soundEnabled', 'snoozeMinutes', 
+        'notesAutoDeleteDays', 'helperPort', 'helperToken'
+      ], (items) => {
+        const themeSel = shadowRoot.getElementById('kcn-setting-theme');
+        const opacityRng = shadowRoot.getElementById('kcn-setting-opacity');
+        const opacityTxt = shadowRoot.getElementById('kcn-opacity-val');
+        const soundChk = shadowRoot.getElementById('kcn-setting-sound');
+        const snoozeSel = shadowRoot.getElementById('kcn-setting-snooze');
+        const notesRetSel = shadowRoot.getElementById('kcn-setting-notes-retention');
+        const helperPortInp = shadowRoot.getElementById('kcn-setting-helper-port');
+        const helperTokenInp = shadowRoot.getElementById('kcn-setting-helper-token');
+
+        if (themeSel) themeSel.value = items.theme || 'auto';
+        if (opacityRng) {
+          const op = typeof items.widgetOpacity === 'number' ? items.widgetOpacity : 0.35;
+          opacityRng.value = op;
+          if (opacityTxt) opacityTxt.textContent = `${Math.round(op * 100)}%`;
+        }
+        if (soundChk) soundChk.checked = items.soundEnabled !== false;
+        if (snoozeSel) snoozeSel.value = String(items.snoozeMinutes || 5);
+        if (notesRetSel) notesRetSel.value = String(items.notesAutoDeleteDays || 0);
+        if (helperPortInp) helperPortInp.value = items.helperPort || 8765;
+        if (helperTokenInp) helperTokenInp.value = items.helperToken || '';
+      });
+    }
+
+    const themeSel = shadowRoot.getElementById('kcn-setting-theme');
+    themeSel?.addEventListener('change', () => {
+      chrome.storage.local.set({ theme: themeSel.value });
+    });
+
+    const opacityRng = shadowRoot.getElementById('kcn-setting-opacity');
+    const opacityTxt = shadowRoot.getElementById('kcn-opacity-val');
+    opacityRng?.addEventListener('input', () => {
+      const val = parseFloat(opacityRng.value);
+      if (opacityTxt) opacityTxt.textContent = `${Math.round(val * 100)}%`;
+      chrome.storage.local.set({ widgetOpacity: val });
+    });
+
+    const soundChk = shadowRoot.getElementById('kcn-setting-sound');
+    soundChk?.addEventListener('change', () => {
+      chrome.storage.local.set({ soundEnabled: soundChk.checked });
+    });
+
+    const snoozeSel = shadowRoot.getElementById('kcn-setting-snooze');
+    snoozeSel?.addEventListener('change', () => {
+      chrome.storage.local.set({ snoozeMinutes: parseInt(snoozeSel.value, 10) });
+    });
+
+    const notesRetSel = shadowRoot.getElementById('kcn-setting-notes-retention');
+    notesRetSel?.addEventListener('change', () => {
+      chrome.storage.local.set({ notesAutoDeleteDays: parseInt(notesRetSel.value, 10) });
+    });
+
+    const helperPortInp = shadowRoot.getElementById('kcn-setting-helper-port');
+    helperPortInp?.addEventListener('change', () => {
+      const p = parseInt(helperPortInp.value, 10) || 8765;
+      chrome.storage.local.set({ helperPort: p });
+      downloaderApi?.reload?.();
+    });
+
+    const helperTokenInp = shadowRoot.getElementById('kcn-setting-helper-token');
+    helperTokenInp?.addEventListener('input', () => {
+      chrome.storage.local.set({ helperToken: helperTokenInp.value.trim() });
+      downloaderApi?.reload?.();
+    });
+
+    // Backup & Restore
+    const backupExportBtn = shadowRoot.getElementById('kcn-backup-export-btn');
+    const backupImportBtn = shadowRoot.getElementById('kcn-backup-import-btn');
+    const backupFileInput = shadowRoot.getElementById('kcn-backup-file-input');
+    const backupFeedback = shadowRoot.getElementById('kcn-backup-feedback');
+
+    function showBackupFeedback(msg, isError = false) {
+      if (!backupFeedback) return;
+      backupFeedback.textContent = msg;
+      backupFeedback.className = `kcn-settings-feedback ${isError ? 'kcn-feedback-error' : 'kcn-feedback-success'}`;
+      backupFeedback.classList.remove('kcn-hidden');
+      setTimeout(() => backupFeedback?.classList.add('kcn-hidden'), 4000);
+    }
+
+    backupExportBtn?.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'SETTINGS_BACKUP_EXPORT' }, (res) => {
+        if (!res?.ok || !res.data) {
+          showBackupFeedback('Failed to export backup', true);
+          return;
+        }
+        const jsonStr = JSON.stringify(res.data, null, 2);
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const fname = `kam-chai-nabirsa-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
+        const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fname;
+        a.click();
+        URL.revokeObjectURL(url);
+        showBackupFeedback('Backup exported successfully!');
+      });
+    });
+
+    backupImportBtn?.addEventListener('click', () => {
+      backupFileInput?.click();
+    });
+
+    backupFileInput?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(reader.result);
+          chrome.runtime.sendMessage({ type: 'SETTINGS_BACKUP_IMPORT', payload: { backup: parsed } }, (res) => {
+            if (!res?.ok) {
+              showBackupFeedback('Failed to import backup: ' + (res?.error || 'Invalid file'), true);
+              return;
+            }
+            showBackupFeedback(`Imported ${res.data?.importedTodos || 0} tasks & ${res.data?.importedNotes || 0} notes!`);
+            todoApi?.reload?.();
+            notesApi?.reload?.();
+          });
+        } catch (_) {
+          showBackupFeedback('Invalid JSON file format', true);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
 
     // Load Saved Preferences
     chrome.storage.local.get(['widgetEnabled', 'widgetPosition', 'widgetOpacity', 'theme', 'lastActiveTab'], (items) => {
@@ -449,6 +706,9 @@
       panel.classList.add('kcn-open');
       pill.classList.add('kcn-active');
       todoApi?.startRefresh?.();
+      if (STATE.activeTab === 'downloader') {
+        downloaderApi?.startPing?.();
+      }
     }
 
     function closePanel(force = false) {
@@ -457,6 +717,8 @@
       panel.classList.remove('kcn-open');
       pill.classList.remove('kcn-active');
       todoApi?.stopRefresh?.();
+      downloaderApi?.stopPing?.();
+      closeSettings();
     }
 
     function togglePanel() {
@@ -483,8 +745,12 @@
 
       if (tabName === 'notes') {
         notesApi?.reload?.();
+        downloaderApi?.stopPing?.();
       } else if (tabName === 'todo') {
         todoApi?.reload?.();
+        downloaderApi?.stopPing?.();
+      } else if (tabName === 'downloader') {
+        downloaderApi?.startPing?.();
       }
 
       chrome.storage.local.set({ lastActiveTab: tabName }).catch(() => {});
@@ -605,9 +871,13 @@
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && STATE.isOpen) {
-        closePanel(true);
-        pill.focus();
+      if (e.key === 'Escape') {
+        if (settingsView && !settingsView.classList.contains('kcn-hidden')) {
+          closeSettings();
+        } else if (STATE.isOpen) {
+          closePanel(true);
+          pill.focus();
+        }
       }
     });
 
