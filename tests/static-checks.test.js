@@ -82,6 +82,7 @@ describe('Static Checks & Manifest Verification', () => {
       'shared/constants.js',
       'shared/messages.js',
       'shared/notes-export.js',
+      'shared/settings.js',
       'shared/utils.js',
       'background/db.js',
       'background/reminders.js',

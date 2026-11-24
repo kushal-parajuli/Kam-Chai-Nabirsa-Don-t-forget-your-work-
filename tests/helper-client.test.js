@@ -13,7 +13,11 @@ describe('Helper Client (extension/background/helper-client.js)', () => {
     originalChrome = globalThis.chrome;
     mockStorage = {
       helperPort: 8765,
-      helperToken: 'test-secret-token'
+      helperToken: 'test-secret-token',
+      settings: {
+        helperPort: 8765,
+        helperToken: 'test-secret-token'
+      }
     };
 
     globalThis.chrome = {
@@ -96,6 +100,7 @@ describe('Helper Client (extension/background/helper-client.js)', () => {
 
   test('returns status "token_missing" when server is online but token is not configured', async () => {
     mockStorage.helperToken = '';
+    if (mockStorage.settings) mockStorage.settings.helperToken = '';
 
     globalThis.fetch = async (url) => {
       if (url.endsWith('/ping')) {
