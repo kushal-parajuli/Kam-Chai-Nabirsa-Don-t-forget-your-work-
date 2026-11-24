@@ -54,8 +54,8 @@ describe('Static Checks & Manifest Verification', () => {
     assert.ok(cs, 'At least one content script config must exist');
     assert.deepEqual(
       cs.js,
-      ['content/widget-css.js', 'content/tabs/todo.js', 'content/tabs/notes.js', 'content/widget.js'],
-      'Content scripts must be loaded in the exact sequence: widget-css.js, todo.js, notes.js, widget.js'
+      ['content/widget-css.js', 'content/tabs/todo.js', 'content/tabs/notes.js', 'content/tabs/downloader.js', 'content/widget.js'],
+      'Content scripts must be loaded in the exact sequence: widget-css.js, todo.js, notes.js, downloader.js, widget.js'
     );
 
     for (const scriptPath of cs.js) {
@@ -85,6 +85,7 @@ describe('Static Checks & Manifest Verification', () => {
       'shared/utils.js',
       'background/db.js',
       'background/reminders.js',
+      'background/helper-client.js',
       'background/service-worker.js',
       'offscreen/offscreen.js'
     ];
