@@ -30,7 +30,13 @@ async function injectWidgetIntoAllTabs() {
         try {
           await chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ['content/widget-css.js', 'content/tabs/todo.js', 'content/widget.js']
+            files: [
+              'content/widget-css.js',
+              'content/tabs/todo.js',
+              'content/tabs/notes.js',
+              'content/tabs/downloader.js',
+              'content/widget.js'
+            ]
           });
         } catch (tabErr) {
           // Silently skip restricted tabs (e.g. Chrome Web Store)
@@ -145,6 +151,47 @@ if (typeof chrome !== 'undefined' && chrome.storage?.onChanged?.addListener) {
       }
     }
   });
+}
+
+// Download notification tracking
+const notifiedDownloadJobs = new Set();
+
+function notifyDownloadComplete(job) {
+  if (!job || !job.id || notifiedDownloadJobs.has(job.id)) return;
+  notifiedDownloadJobs.add(job.id);
+  if (typeof chrome !== 'undefined' && chrome.notifications?.create) {
+    const icon = typeof chrome.runtime?.getURL === 'function' 
+      ? chrome.runtime.getURL('icons/icon128.png')
+      : 'icons/icon128.png';
+    chrome.notifications.create(`dl-done:${job.id}`, {
+      type: 'basic',
+      iconUrl: icon,
+      title: 'Download complete',
+      message: job.filename ? `Saved: ${job.filename}` : 'Your download has completed successfully.',
+      priority: 0
+    }, () => {
+      if (chrome.runtime?.lastError) { /* ignore */ }
+    });
+  }
+}
+
+function notifyDownloadFailed(job) {
+  if (!job || !job.id || notifiedDownloadJobs.has(job.id)) return;
+  notifiedDownloadJobs.add(job.id);
+  if (typeof chrome !== 'undefined' && chrome.notifications?.create) {
+    const icon = typeof chrome.runtime?.getURL === 'function' 
+      ? chrome.runtime.getURL('icons/icon128.png')
+      : 'icons/icon128.png';
+    chrome.notifications.create(`dl-error:${job.id}`, {
+      type: 'basic',
+      iconUrl: icon,
+      title: 'Download failed',
+      message: job.error || 'The download could not be completed.',
+      priority: 0
+    }, () => {
+      if (chrome.runtime?.lastError) { /* ignore */ }
+    });
+  }
 }
 
 /**
@@ -463,12 +510,161 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })();
       return true;
 
-    // Helper client (Phase 6)
+    // Helper client (Phase 6 & 7)
     case MESSAGES.HELPER_PING:
       helperClient.pingHelper()
         .then((res) => sendResponse(createResponse(true, res)))
         .catch((err) => {
           console.error('[KCN Service Worker] Helper ping error:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    // Downloader operations (Phase 7)
+    case MESSAGES.DOWNLOAD_START:
+      (async () => {
+        try {
+          const { url, type } = payload || {};
+          if (!url || typeof url !== 'string' || !url.trim()) {
+            sendResponse(createResponse(false, null, 'URL is required'));
+            return;
+          }
+          const trimmed = url.trim();
+          if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+            sendResponse(createResponse(false, null, 'URL must start with http:// or https://'));
+            return;
+          }
+          if (trimmed.length > 2048) {
+            sendResponse(createResponse(false, null, 'URL exceeds maximum length of 2048 characters'));
+            return;
+          }
+          if (trimmed.startsWith('-')) {
+            sendResponse(createResponse(false, null, 'URL cannot start with a hyphen'));
+            return;
+          }
+
+          const mediaType = type === 'audio' ? 'audio' : 'video';
+          const helperRes = await helperClient.startDownload(trimmed, mediaType);
+          if (!helperRes || !helperRes.jobId) {
+            sendResponse(createResponse(false, null, helperRes?.error || 'Failed to start download job'));
+            return;
+          }
+
+          const record = {
+            id: helperRes.jobId,
+            url: trimmed,
+            type: mediaType,
+            state: 'queued',
+            progress: 0,
+            filename: null,
+            error: null,
+            createdAt: Date.now()
+          };
+          await db.saveDownload(record);
+          sendResponse(createResponse(true, record));
+          broadcastToAllTabs({ type: MESSAGES.DOWNLOADS_CHANGED });
+        } catch (err) {
+          console.error('[KCN Service Worker] DOWNLOAD_START error:', err);
+          sendResponse(createResponse(false, null, err.message));
+        }
+      })();
+      return true;
+
+    case MESSAGES.DOWNLOAD_STATUS:
+      (async () => {
+        try {
+          const { jobId } = payload || {};
+          if (!jobId) {
+            sendResponse(createResponse(false, null, 'jobId is required'));
+            return;
+          }
+          const statusRes = await helperClient.getDownloadStatus(jobId);
+          if (statusRes && statusRes.ok) {
+            const updated = await db.saveDownload({
+              id: statusRes.id || jobId,
+              url: statusRes.url,
+              type: statusRes.type,
+              state: statusRes.state,
+              progress: statusRes.progress,
+              filename: statusRes.filename,
+              error: statusRes.error
+            });
+
+            if (statusRes.state === 'done') {
+              notifyDownloadComplete(statusRes);
+            } else if (statusRes.state === 'error') {
+              notifyDownloadFailed(statusRes);
+            }
+
+            sendResponse(createResponse(true, updated));
+          } else {
+            sendResponse(createResponse(false, null, statusRes?.error || 'Failed to query download status'));
+          }
+        } catch (err) {
+          console.error('[KCN Service Worker] DOWNLOAD_STATUS error:', err);
+          sendResponse(createResponse(false, null, err.message));
+        }
+      })();
+      return true;
+
+    case MESSAGES.DOWNLOAD_CANCEL:
+      (async () => {
+        try {
+          const { jobId } = payload || {};
+          if (!jobId) {
+            sendResponse(createResponse(false, null, 'jobId is required'));
+            return;
+          }
+          await helperClient.cancelDownload(jobId);
+          const updated = await db.saveDownload({
+            id: jobId,
+            state: 'cancelled',
+            error: 'Download cancelled by user'
+          });
+          sendResponse(createResponse(true, updated));
+          broadcastToAllTabs({ type: MESSAGES.DOWNLOADS_CHANGED });
+        } catch (err) {
+          console.error('[KCN Service Worker] DOWNLOAD_CANCEL error:', err);
+          sendResponse(createResponse(false, null, err.message));
+        }
+      })();
+      return true;
+
+    case MESSAGES.DOWNLOAD_LIST:
+      db.getDownloads()
+        .then((list) => sendResponse(createResponse(true, list)))
+        .catch((err) => {
+          console.error('[KCN Service Worker] DOWNLOAD_LIST error:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    case MESSAGES.DOWNLOAD_CLEAR:
+      db.clearDownloads()
+        .then(() => {
+          sendResponse(createResponse(true));
+          broadcastToAllTabs({ type: MESSAGES.DOWNLOADS_CHANGED });
+        })
+        .catch((err) => {
+          console.error('[KCN Service Worker] DOWNLOAD_CLEAR error:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    case MESSAGES.DOWNLOAD_OPEN_FOLDER:
+      helperClient.openDownloadFolder()
+        .then((res) => sendResponse(createResponse(true, res)))
+        .catch((err) => {
+          console.error('[KCN Service Worker] DOWNLOAD_OPEN_FOLDER error:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    case MESSAGES.DOWNLOAD_UPDATE_YTDLP:
+      helperClient.updateYtDlp()
+        .then((res) => sendResponse(createResponse(true, res)))
+        .catch((err) => {
+          console.error('[KCN Service Worker] DOWNLOAD_UPDATE_YTDLP error:', err);
           sendResponse(createResponse(false, null, err.message));
         });
       return true;

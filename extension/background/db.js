@@ -1024,20 +1024,28 @@ export async function saveDownload(item) {
     const tx = db.transaction('downloads', 'readwrite');
     const store = tx.objectStore('downloads');
 
-    const record = {
-      id: item.id,
-      url: item.url || '',
-      type: item.type === 'audio' ? 'audio' : 'video',
-      state: item.state || 'queued',
-      progress: typeof item.progress === 'number' ? item.progress : 0,
-      filename: item.filename || null,
-      error: item.error || null,
-      createdAt: item.createdAt || Date.now(),
-      updatedAt: Date.now()
+    let record = null;
+    const getReq = store.get(item.id);
+
+    getReq.onsuccess = () => {
+      const existing = getReq.result || {};
+      record = {
+        id: item.id,
+        url: item.url !== undefined ? item.url : (existing.url || ''),
+        type: item.type !== undefined ? (item.type === 'audio' ? 'audio' : 'video') : (existing.type || 'video'),
+        state: item.state !== undefined ? item.state : (existing.state || 'queued'),
+        progress: typeof item.progress === 'number' ? item.progress : (existing.progress || 0),
+        filename: item.filename !== undefined ? item.filename : (existing.filename || null),
+        error: item.error !== undefined ? item.error : (existing.error || null),
+        createdAt: existing.createdAt || item.createdAt || Date.now(),
+        updatedAt: Date.now()
+      };
+
+      const putReq = store.put(record);
+      putReq.onerror = () => reject(new Error(`Failed to save download: ${putReq.error?.message}`));
     };
 
-    const req = store.put(record);
-    req.onerror = () => reject(new Error(`Failed to save download: ${req.error?.message}`));
+    getReq.onerror = () => reject(new Error(`Failed to read existing download: ${getReq.error?.message}`));
 
     tx.oncomplete = () => resolve(record);
     tx.onerror = () => reject(new Error(`Transaction failed saving download: ${tx.error?.message}`));

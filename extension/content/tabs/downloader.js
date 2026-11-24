@@ -1,14 +1,21 @@
 // © 2026 Kushal Parajuli
 
 /**
- * Downloader Tab component for Kam Chai Nabirsa.
+ * Downloader Tab component for Kam Chai Nabirsa (Phase 7 Real Downloads).
  * Injected as a content script inside the Shadow DOM without dynamic imports.
  * Communicates with the local helper exclusively via the background service worker.
  */
 
 (function () {
   const MESSAGES = {
-    HELPER_PING: 'HELPER_PING'
+    HELPER_PING: 'HELPER_PING',
+    DOWNLOAD_START: 'DOWNLOAD_START',
+    DOWNLOAD_STATUS: 'DOWNLOAD_STATUS',
+    DOWNLOAD_CANCEL: 'DOWNLOAD_CANCEL',
+    DOWNLOAD_LIST: 'DOWNLOAD_LIST',
+    DOWNLOAD_CLEAR: 'DOWNLOAD_CLEAR',
+    DOWNLOAD_OPEN_FOLDER: 'DOWNLOAD_OPEN_FOLDER',
+    DOWNLOADS_CHANGED: 'DOWNLOADS_CHANGED'
   };
 
   /**
@@ -20,7 +27,9 @@
 
     let selectedType = 'video'; // 'video' | 'audio'
     let pingInterval = null;
+    let activePollInterval = null;
     let isChecking = false;
+    let currentJobs = [];
 
     paneElement.innerHTML = `
       <div class="kcn-dl-container">
@@ -73,21 +82,18 @@
         <!-- Active Jobs / History Section -->
         <div class="kcn-dl-jobs-section">
           <div class="kcn-dl-jobs-header">
-            <span class="kcn-dl-jobs-title">Download Activity</span>
-            <span class="kcn-dl-jobs-count">0 items</span>
+            <div class="kcn-dl-jobs-header-left">
+              <span class="kcn-dl-jobs-title">Download Activity</span>
+              <span class="kcn-dl-jobs-count" id="kcn-dl-jobs-count">0 items</span>
+            </div>
+            <div class="kcn-dl-header-actions">
+              <button type="button" class="kcn-dl-header-btn" id="kcn-dl-open-folder-btn" title="Open download folder in File Explorer">Open folder</button>
+              <button type="button" class="kcn-dl-header-btn" id="kcn-dl-clear-history-btn" title="Clear finished download history">Clear</button>
+            </div>
           </div>
 
           <div class="kcn-dl-jobs-list" id="kcn-dl-jobs-list">
-            <!-- Empty state -->
-            <div class="kcn-dl-empty-state">
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              <div class="kcn-dl-empty-title">Ready for downloads</div>
-              <div class="kcn-dl-empty-desc">Paste any video or audio URL above. Active downloads and progress tracking will be enabled in Phase 7.</div>
-            </div>
+            <!-- Jobs or empty state injected dynamically -->
           </div>
         </div>
 
@@ -112,20 +118,27 @@
     const typeBtns = paneElement.querySelectorAll('.kcn-dl-type-btn');
     const submitBtn = paneElement.querySelector('#kcn-dl-submit-btn');
     const feedback = paneElement.querySelector('#kcn-dl-feedback');
+    const jobsCount = paneElement.querySelector('#kcn-dl-jobs-count');
+    const jobsList = paneElement.querySelector('#kcn-dl-jobs-list');
+    const openFolderBtn = paneElement.querySelector('#kcn-dl-open-folder-btn');
+    const clearHistoryBtn = paneElement.querySelector('#kcn-dl-clear-history-btn');
+
+    let feedbackTimer = null;
 
     /**
-     * Shows a temporary feedback notification in the Downloader tab.
+     * Shows feedback banner.
      * @param {string} msg 
      * @param {'info'|'error'|'success'} [type='info'] 
      */
     function showFeedback(msg, type = 'info') {
       if (!feedback) return;
+      if (feedbackTimer) clearTimeout(feedbackTimer);
       feedback.textContent = msg;
       feedback.className = `kcn-dl-feedback kcn-dl-feedback-${type}`;
       feedback.classList.remove('kcn-hidden');
-      setTimeout(() => {
+      feedbackTimer = setTimeout(() => {
         feedback?.classList.add('kcn-hidden');
-      }, 6000);
+      }, 5000);
     }
 
     /**
@@ -200,6 +213,240 @@
       }
     }
 
+    /**
+     * Fetches download jobs list from service worker.
+     */
+    function loadJobs() {
+      if (!chrome?.runtime?.id) return;
+      chrome.runtime.sendMessage({ type: MESSAGES.DOWNLOAD_LIST }, (res) => {
+        if (chrome.runtime.lastError || !res || !res.ok) return;
+        currentJobs = Array.isArray(res.data) ? res.data : [];
+        renderJobs();
+        managePolling();
+      });
+    }
+
+    /**
+     * Polls active running or queued jobs.
+     */
+    function pollActiveJobs() {
+      if (!chrome?.runtime?.id) return;
+      const active = currentJobs.filter((j) => j.state === 'queued' || j.state === 'running');
+      if (active.length === 0) {
+        stopActivePolling();
+        return;
+      }
+
+      for (const job of active) {
+        chrome.runtime.sendMessage({
+          type: MESSAGES.DOWNLOAD_STATUS,
+          payload: { jobId: job.id }
+        }, (res) => {
+          if (chrome.runtime.lastError || !res || !res.ok || !res.data) return;
+          const updated = res.data;
+          const idx = currentJobs.findIndex((j) => j.id === updated.id);
+          if (idx !== -1) {
+            currentJobs[idx] = { ...currentJobs[idx], ...updated };
+            updateJobElement(currentJobs[idx]);
+          }
+          managePolling();
+        });
+      }
+    }
+
+    function managePolling() {
+      const hasActive = currentJobs.some((j) => j.state === 'queued' || j.state === 'running');
+      if (hasActive) {
+        if (!activePollInterval) {
+          activePollInterval = setInterval(pollActiveJobs, 1000);
+        }
+      } else {
+        stopActivePolling();
+      }
+    }
+
+    function stopActivePolling() {
+      if (activePollInterval) {
+        clearInterval(activePollInterval);
+        activePollInterval = null;
+      }
+    }
+
+    /**
+     * Renders the complete jobs list into the container.
+     */
+    function renderJobs() {
+      if (!jobsList || !jobsCount) return;
+
+      jobsCount.textContent = `${currentJobs.length} ${currentJobs.length === 1 ? 'item' : 'items'}`;
+      jobsList.innerHTML = '';
+
+      if (currentJobs.length === 0) {
+        jobsList.classList.add('kcn-dl-empty');
+        const empty = document.createElement('div');
+        empty.className = 'kcn-dl-empty-state';
+        empty.innerHTML = `
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <div class="kcn-dl-empty-title">Ready for downloads</div>
+          <div class="kcn-dl-empty-desc">Paste any video or audio URL above to begin downloading.</div>
+        `;
+        jobsList.appendChild(empty);
+        return;
+      }
+
+      jobsList.classList.remove('kcn-dl-empty');
+
+      for (const job of currentJobs) {
+        const itemEl = createJobElement(job);
+        jobsList.appendChild(itemEl);
+      }
+    }
+
+    /**
+     * Creates a single job item element.
+     * @param {object} job 
+     * @returns {HTMLElement}
+     */
+    function createJobElement(job) {
+      const el = document.createElement('div');
+      el.className = 'kcn-dl-job-item';
+      el.id = `kcn-job-${job.id}`;
+
+      // Header row
+      const header = document.createElement('div');
+      header.className = 'kcn-dl-job-header';
+
+      const title = document.createElement('div');
+      title.className = 'kcn-dl-job-title';
+      title.textContent = job.filename || job.url;
+      title.title = job.filename ? `${job.filename} (${job.url})` : job.url;
+
+      const pill = document.createElement('span');
+      pill.className = `kcn-dl-job-pill kcn-pill-${job.state || 'queued'}`;
+      pill.textContent = getPillText(job);
+
+      header.appendChild(title);
+      header.appendChild(pill);
+      el.appendChild(header);
+
+      // Progress bar (if queued or running)
+      if (job.state === 'queued' || job.state === 'running') {
+        const progWrap = document.createElement('div');
+        progWrap.className = 'kcn-dl-progress-wrap';
+        const progFill = document.createElement('div');
+        progFill.className = 'kcn-dl-progress-fill';
+        progFill.style.width = `${Math.min(100, Math.max(0, job.progress || 0))}%`;
+        progWrap.appendChild(progFill);
+        el.appendChild(progWrap);
+      }
+
+      // Footer row
+      const footer = document.createElement('div');
+      footer.className = 'kcn-dl-job-footer';
+
+      const info = document.createElement('div');
+      info.className = 'kcn-dl-job-file';
+
+      if (job.state === 'error') {
+        info.textContent = job.error || 'Download failed';
+        info.style.color = '#dc2626';
+        info.title = job.error || '';
+      } else if (job.state === 'done') {
+        info.textContent = job.filename ? `Saved: ${job.filename}` : 'Download complete';
+        info.style.color = '#16a34a';
+      } else if (job.state === 'cancelled') {
+        info.textContent = 'Download cancelled';
+      } else {
+        const typeLabel = job.type === 'audio' ? 'Audio (MP3)' : 'Video (MP4)';
+        info.textContent = `${typeLabel} • ${Math.round(job.progress || 0)}%`;
+      }
+
+      footer.appendChild(info);
+
+      // Cancel button if active
+      if (job.state === 'queued' || job.state === 'running') {
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'kcn-dl-job-cancel';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', () => {
+          cancelJob(job.id);
+        });
+        footer.appendChild(cancelBtn);
+      }
+
+      el.appendChild(footer);
+      return el;
+    }
+
+    /**
+     * Updates an existing job item DOM element in-place to avoid full list re-renders.
+     * @param {object} job 
+     */
+    function updateJobElement(job) {
+      const el = jobsList.querySelector(`#kcn-job-${job.id}`);
+      if (!el) {
+        renderJobs();
+        return;
+      }
+
+      const pill = el.querySelector('.kcn-dl-job-pill');
+      if (pill) {
+        pill.className = `kcn-dl-job-pill kcn-pill-${job.state || 'queued'}`;
+        pill.textContent = getPillText(job);
+      }
+
+      const title = el.querySelector('.kcn-dl-job-title');
+      if (title && job.filename) {
+        title.textContent = job.filename;
+        title.title = `${job.filename} (${job.url})`;
+      }
+
+      const progFill = el.querySelector('.kcn-dl-progress-fill');
+      if (progFill) {
+        progFill.style.width = `${Math.min(100, Math.max(0, job.progress || 0))}%`;
+      }
+
+      // If job is no longer running, re-render to update footer/cancel button
+      if (job.state === 'done' || job.state === 'error' || job.state === 'cancelled') {
+        const newEl = createJobElement(job);
+        el.replaceWith(newEl);
+      }
+    }
+
+    function getPillText(job) {
+      if (job.state === 'running') {
+        return (job.progress && job.progress > 0) ? `${Math.round(job.progress)}%` : 'Starting';
+      }
+      if (job.state === 'done') return 'Done';
+      if (job.state === 'error') return 'Failed';
+      if (job.state === 'cancelled') return 'Cancelled';
+      return 'Queued';
+    }
+
+    /**
+     * Cancels an active job.
+     * @param {string} jobId 
+     */
+    function cancelJob(jobId) {
+      if (!chrome?.runtime?.id) return;
+      chrome.runtime.sendMessage({
+        type: MESSAGES.DOWNLOAD_CANCEL,
+        payload: { jobId }
+      }, (res) => {
+        if (chrome.runtime.lastError || !res?.ok) {
+          showFeedback('Failed to cancel download', 'error');
+          return;
+        }
+        showFeedback('Download cancelled', 'info');
+        loadJobs();
+      });
+    }
+
     // Format toggle handling
     typeBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -236,8 +483,34 @@
         return;
       }
 
-      // Phase 6 acceptance notice (Real downloading is Phase 7)
-      showFeedback(`Valid ${selectedType.toUpperCase()} link! Real downloads with yt-dlp & ffmpeg will be active in Phase 7.`, 'info');
+      if (url.startsWith('-')) {
+        showFeedback('URL cannot start with a hyphen (-)', 'error');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Starting...';
+
+      chrome.runtime.sendMessage({
+        type: MESSAGES.DOWNLOAD_START,
+        payload: {
+          url,
+          type: selectedType
+        }
+      }, (res) => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Download';
+
+        if (chrome.runtime.lastError || !res || !res.ok) {
+          const err = res?.error || chrome.runtime.lastError?.message || 'Failed to start download';
+          showFeedback(err, 'error');
+          return;
+        }
+
+        if (urlInput) urlInput.value = '';
+        showFeedback(`Download started for ${selectedType.toUpperCase()}!`, 'success');
+        loadJobs();
+      });
     });
 
     urlInput?.addEventListener('keydown', (e) => {
@@ -247,9 +520,43 @@
       }
     });
 
+    // Open Folder Handler
+    openFolderBtn?.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: MESSAGES.DOWNLOAD_OPEN_FOLDER }, (res) => {
+        if (chrome.runtime.lastError || !res || !res.ok) {
+          showFeedback(res?.error || 'Could not open folder (check helper status)', 'error');
+        } else {
+          showFeedback('Opened download folder in File Explorer', 'info');
+        }
+      });
+    });
+
+    // Clear History Handler
+    clearHistoryBtn?.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: MESSAGES.DOWNLOAD_CLEAR }, (res) => {
+        if (chrome.runtime.lastError || !res || !res.ok) {
+          showFeedback('Failed to clear download history', 'error');
+        } else {
+          showFeedback('Download history cleared', 'info');
+          loadJobs();
+        }
+      });
+    });
+
+    // Broadcast listener for DOWNLOADS_CHANGED
+    const onBroadcastMessage = (msg) => {
+      if (msg?.type === MESSAGES.DOWNLOADS_CHANGED) {
+        loadJobs();
+      }
+    };
+    if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage?.addListener) {
+      chrome.runtime.onMessage.addListener(onBroadcastMessage);
+    }
+
     // Pinging interval management
     function startPinging() {
       checkStatus();
+      loadJobs();
       if (!pingInterval) {
         pingInterval = setInterval(checkStatus, 10000);
       }
@@ -260,14 +567,24 @@
         clearInterval(pingInterval);
         pingInterval = null;
       }
+      stopActivePolling();
     }
 
+    // Initial check and load
+    startPinging();
+
     return {
-      reload: checkStatus,
+      reload: () => {
+        checkStatus();
+        loadJobs();
+      },
       startPing: startPinging,
       stopPing: stopPinging,
       cleanup: () => {
         stopPinging();
+        if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage?.removeListener) {
+          chrome.runtime.onMessage.removeListener(onBroadcastMessage);
+        }
       }
     };
   }
