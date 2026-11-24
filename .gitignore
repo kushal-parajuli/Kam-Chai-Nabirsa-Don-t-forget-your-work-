@@ -2,6 +2,7 @@
 __pycache__/
 .venv/
 venv/
+.pytest_cache/
 helper/token.txt
 helper/config.json
 *.log
@@ -9,3 +10,4 @@ helper/config.json
 downloads/
 .DS_Store
 Thumbs.db
+

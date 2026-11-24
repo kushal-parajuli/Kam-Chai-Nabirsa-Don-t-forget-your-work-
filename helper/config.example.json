@@ -1,0 +1,6 @@
+{
+  "port": 8765,
+  "outputDir": "%USERPROFILE%\\Downloads\\KamChaiNabirsa",
+  "allowedOrigin": "chrome-extension://YOUR_EXTENSION_ID_HERE",
+  "maxConcurrentJobs": 2
+}

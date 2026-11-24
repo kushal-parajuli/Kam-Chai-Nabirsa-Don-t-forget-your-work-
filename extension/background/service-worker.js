@@ -4,6 +4,7 @@ import { MESSAGES, createResponse } from '../shared/messages.js';
 import { dataUrlToBlob, blobToDataUrl } from '../shared/utils.js';
 import * as db from './db.js';
 import * as reminders from './reminders.js';
+import * as helperClient from './helper-client.js';
 
 /**
  * Default user settings.
@@ -347,6 +348,67 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         .then(() => sendResponse(createResponse(true, payload)))
         .catch((err) => {
           console.error('[KCN Service Worker] Failed to save settings:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    case MESSAGES.SETTINGS_BACKUP_EXPORT:
+      Promise.all([db.getTodos(), db.getNotes()])
+        .then(([todos, notes]) => {
+          const backup = {
+            app: 'kam-chai-nabirsa',
+            version: 1,
+            exportedAt: Date.now(),
+            todos,
+            notes
+          };
+          sendResponse(createResponse(true, backup));
+        })
+        .catch((err) => {
+          console.error('[KCN Service Worker] Backup export failed:', err);
+          sendResponse(createResponse(false, null, err.message));
+        });
+      return true;
+
+    case MESSAGES.SETTINGS_BACKUP_IMPORT:
+      (async () => {
+        try {
+          const { backup } = payload || {};
+          if (!backup || typeof backup !== 'object') {
+            sendResponse(createResponse(false, null, 'Invalid backup format'));
+            return;
+          }
+          const { todos = [], notes = [] } = backup;
+          for (const t of todos) {
+            try {
+              if (t.title) {
+                await db.addTodo({ title: t.title, remindAt: t.remindAt || null });
+              }
+            } catch (_) {}
+          }
+          for (const n of notes) {
+            try {
+              if (n.kind === 'text' && n.text) {
+                await db.addNote({ kind: 'text', text: n.text, pinned: Boolean(n.pinned) });
+              }
+            } catch (_) {}
+          }
+          broadcastToAllTabs({ type: MESSAGES.TODOS_CHANGED });
+          broadcastToAllTabs({ type: MESSAGES.NOTES_CHANGED });
+          sendResponse(createResponse(true, { importedTodos: todos.length, importedNotes: notes.length }));
+        } catch (err) {
+          console.error('[KCN Service Worker] Backup import failed:', err);
+          sendResponse(createResponse(false, null, err.message));
+        }
+      })();
+      return true;
+
+    // Helper client (Phase 6)
+    case MESSAGES.HELPER_PING:
+      helperClient.pingHelper()
+        .then((res) => sendResponse(createResponse(true, res)))
+        .catch((err) => {
+          console.error('[KCN Service Worker] Helper ping error:', err);
           sendResponse(createResponse(false, null, err.message));
         });
       return true;
